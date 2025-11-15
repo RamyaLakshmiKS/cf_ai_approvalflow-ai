@@ -1,7 +1,7 @@
 import { routeAgentRequest, type Schedule } from "agents";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getCookie, deleteCookie } from "hono/cookie";
+import { getCookie, deleteCookie, setCookie } from "hono/cookie";
 
 import { getSchedulePrompt } from "agents/schedule";
 
@@ -158,13 +158,25 @@ app.post("/api/auth/register", async (c) => {
       return c.json({ error: "Username and password are required" }, 400);
     }
 
+    // Check if user already exists
+    const existingUser = await c.env.APP_DB.prepare(
+      "SELECT id FROM users WHERE username = ?"
+    )
+      .bind(username)
+      .first();
+
+    if (existingUser) {
+      return c.json({ error: "Username already taken" }, 409);
+    }
+
     const salt = generateSalt();
     const password_hash = await hashPassword(password, salt);
+    const id = crypto.randomUUID();
 
     await c.env.APP_DB.prepare(
-      "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)"
+      "INSERT INTO users (id, username, password_hash, salt) VALUES (?, ?, ?, ?)"
     )
-      .bind(username, password_hash, salt)
+      .bind(id, username, password_hash, salt)
       .run();
 
     return c.json({ message: "User registered successfully" }, 201);
@@ -204,14 +216,15 @@ app.post("/api/auth/login", async (c) => {
 
     const sessionToken = generateSalt(); // Re-using salt generation for a random token
     const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
+    const sessionId = crypto.randomUUID();
 
     await c.env.APP_DB.prepare(
-      "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)"
+      "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)"
     )
-      .bind(user.id, sessionToken, expires_at.getTime())
+      .bind(sessionId, user.id, sessionToken, expires_at.getTime())
       .run();
 
-    c.cookie("session_token", sessionToken, {
+    setCookie(c, "session_token", sessionToken, {
       httpOnly: true,
       secure: true,
       sameSite: "Lax",

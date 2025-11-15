@@ -9,17 +9,21 @@ export function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const { login, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setRegistrationSuccess(false); // Clear any previous success message
     try {
       if (isRegistering) {
         await register(username, password);
-        // Automatically log in after successful registration
-        await login(username, password);
+        setRegistrationSuccess(true);
+        setIsRegistering(false); // Switch to login form
+        setUsername(""); // Clear form
+        setPassword(""); // Clear form
       } else {
         await login(username, password);
       }
@@ -41,6 +45,11 @@ export function Login() {
               : "Sign in to continue"}
           </p>
         </div>
+        {registrationSuccess && (
+          <p className="text-green-500 text-sm text-center">
+            Registration successful! Please log in.
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
@@ -69,7 +78,11 @@ export function Login() {
         </form>
         <div className="text-center">
           <button
-            onClick={() => setIsRegistering(!isRegistering)}
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setError(null); // Clear error when switching forms
+              setRegistrationSuccess(false); // Clear success message
+            }}
             className="text-sm text-blue-500 hover:underline"
           >
             {isRegistering
