@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/providers/AuthProvider";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { Input } from "@/components/input/Input";
@@ -10,7 +10,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register } = useAuthContext();
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,7 +27,8 @@ export function Login() {
       } else {
         await login(username, password);
       }
-    } catch (err) {
+    }
+    catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     }
   };
