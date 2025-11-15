@@ -5,6 +5,9 @@ import { isToolUIPart } from "ai";
 import { useAgentChat } from "agents/ai-react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { tools } from "./tools";
+import { useAuthContext } from "@/providers/AuthProvider";
+import { Login } from "@/components/auth/Login";
+import { Loader } from "@/components/loader/Loader";
 
 // Component imports
 import { Button } from "@/components/button/Button";
@@ -23,14 +26,16 @@ import {
   Sun,
   Trash,
   PaperPlaneTilt,
-  Stop
+  Stop,
+  SignOut
 } from "@phosphor-icons/react";
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [];
 
-export default function Chat() {
+function ChatInterface() {
+  const { logout } = useAuthContext();
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
@@ -187,6 +192,15 @@ export default function Chat() {
             onClick={clearHistory}
           >
             <Trash size={20} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={logout}
+          >
+            <SignOut size={20} />
           </Button>
         </div>
 
@@ -417,6 +431,24 @@ export default function Chat() {
       </div>
     </div>
   );
+}
+
+export default function App() {
+  const { status } = useAuthContext();
+
+  if (status === "loading") {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader />
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return <Login />;
+  }
+
+  return <ChatInterface />;
 }
 
 const hasAiProviderPromise = fetch("/check-ai-provider").then((res) =>

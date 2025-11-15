@@ -31,7 +31,14 @@
   ],
   "observability": {
     "enabled": true
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "APP_DB",
+      "database_name": "approvalflow_db",
+      "database_id": "a09cdc9d-ad17-4a8c-afea-417c4107a098"
+    }
+  ]
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
