@@ -28,9 +28,7 @@ import {
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
-const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "getWeatherInformation"
-];
+const toolsRequiringConfirmation: (keyof typeof tools)[] = [];
 
 export default function Chat() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -137,7 +135,7 @@ export default function Chat() {
 
   return (
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
-      <HasOpenAIKey />
+      <HasAIProvider />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
@@ -159,7 +157,7 @@ export default function Chat() {
           </div>
 
           <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
+            <h2 className="font-semibold text-base">ApprovalFlow AI</h2>
           </div>
 
           <div className="flex items-center gap-2 mr-2">
@@ -201,19 +199,21 @@ export default function Chat() {
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <Robot size={24} />
                   </div>
-                  <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
+                  <h3 className="font-semibold text-lg">
+                    Welcome to ApprovalFlow AI
+                  </h3>
                   <p className="text-muted-foreground text-sm">
-                    Start a conversation with your AI assistant. Try asking
-                    about:
+                    You can submit requests for PTO, expenses, and access
+                    grants. Try asking:
                   </p>
                   <ul className="text-sm text-left space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>Weather information for any city</span>
+                      <span>"I need to request 3 days of PTO"</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>Local time in different locations</span>
+                      <span>"Submit an expense for $50 for a client lunch"</span>
                     </li>
                   </ul>
                 </div>
@@ -419,14 +419,14 @@ export default function Chat() {
   );
 }
 
-const hasOpenAiKeyPromise = fetch("/check-ai-provider").then((res) =>
+const hasAiProviderPromise = fetch("/check-ai-provider").then((res) =>
   res.json<{ success: boolean }>()
 );
 
-function HasOpenAIKey() {
-  const hasOpenAiKey = use(hasOpenAiKeyPromise);
+function HasAIProvider() {
+  const hasAiProvider = use(hasAiProviderPromise);
 
-  if (!hasOpenAiKey.success) {
+  if (!hasAiProvider.success) {
     return (
       <div className="fixed top-0 left-0 right-0 z-50 bg-red-500/10 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto p-4">
