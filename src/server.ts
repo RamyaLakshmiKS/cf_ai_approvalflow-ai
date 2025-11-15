@@ -13,17 +13,12 @@ import {
   createUIMessageStreamResponse,
   type ToolSet
 } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createWorkersAI } from "workers-ai-provider";
 import { processToolCalls, cleanupMessages } from "./utils";
 import { tools, executions } from "./tools";
-// import { env } from "cloudflare:workers";
 
-const model = openai("gpt-4o-2024-11-20");
+const DEFAULT_CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 // Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -59,6 +54,16 @@ export class Chat extends AIChatAgent<Env> {
           tools: allTools,
           executions
         });
+
+        const workersai = createWorkersAI({ binding: this.env.AI });
+        const modelName =
+          (this.env as unknown as { MODEL?: string }).MODEL || DEFAULT_CF_MODEL;
+        // The provider exposes a constrained model id union type; to avoid
+        // brittle type-level coupling with the provider package we pass the
+        // runtime string and ignore TypeScript here. The runtime model (e.g.
+        // '@cf/meta/llama-2-7b-chat-int8') must be a valid Workers AI model id.
+        // @ts-expect-error (modelId is a provider-specific union type; we pass a runtime string)
+        const model = workersai(modelName);
 
         const result = streamText({
           system: `You are a helpful assistant that can do various tasks... 
@@ -112,15 +117,15 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/check-open-ai-key") {
-      const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+    if (url.pathname === "/check-ai-provider") {
+      const hasAI = !!env.AI;
       return Response.json({
-        success: hasOpenAIKey
+        success: hasAI
       });
     }
-    if (!process.env.OPENAI_API_KEY) {
+    if (!env.AI) {
       console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
+        "AI binding is not configured (env.AI). Please configure the `ai` binding in wrangler.jsonc and ensure an AI Gateway is attached."
       );
     }
     return (

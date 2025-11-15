@@ -19,7 +19,7 @@ A starter template for building AI-powered chat agents using Cloudflare's Agent 
 ## Prerequisites
 
 - Cloudflare account
-- OpenAI API key
+- Cloudflare AI Gateway / Workers AI subscription (or equivalent AI provider)
 
 ## Quick Start
 
@@ -37,10 +37,13 @@ npm install
 
 3. Set up your environment:
 
-Create a `.dev.vars` file:
+Create a `.dev.vars` file or configure your `wrangler.jsonc` `ai` binding for Workers AI. Example in `wrangler.jsonc`:
 
-```env
-OPENAI_API_KEY=your_openai_api_key
+```jsonc
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  }
 ```
 
 4. Run locally:
@@ -131,13 +134,13 @@ Tools can be configured in two ways:
 
 ### Use a different AI model provider
 
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but you can use any AI model provider by:
+The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but this repository has been updated to use Cloudflare's Workers AI provider. You can use any AI model provider as well, including:
 
 1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
 2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
 3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
 
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai), install the package:
+For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) (preferred in this project), install the package:
 
 ```sh
 npm install workers-ai-provider
@@ -153,7 +156,7 @@ Add an `ai` binding to `wrangler.jsonc`:
 // rest of file
 ```
 
-Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
+Replace usages of `@ai-sdk/openai` with `workers-ai-provider`. Example (server.ts):
 
 ```diff
 // server.ts
@@ -162,12 +165,11 @@ Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
 + import { createWorkersAI } from 'workers-ai-provider';
 
 // Create a Workers AI instance
-+ const workersai = createWorkersAI({ binding: env.AI });
+const workersai = createWorkersAI({ binding: env.AI });
 
 // Use it when calling the streamText method (or other methods)
 // from the ai-sdk
-- const model = openai("gpt-4o-2024-11-20");
-+ const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b")
+const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
 ```
 
 Commit your changes and then run the `agents-starter` as per the rest of this README.
