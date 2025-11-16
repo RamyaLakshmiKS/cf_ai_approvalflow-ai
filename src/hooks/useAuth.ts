@@ -16,7 +16,7 @@ export function useAuth() {
     try {
       const response = await fetch("/api/auth/me");
       if (response.ok) {
-        const userData = await response.json();
+        const userData = (await response.json()) as User;
         setUser(userData);
         setStatus("authenticated");
       } else {
@@ -34,7 +34,7 @@ export function useAuth() {
     fetchUser();
   }, [fetchUser]);
 
-  const login = async (username, password) => {
+  const login = async (username: string, password: string): Promise<void> => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -54,7 +54,10 @@ export function useAuth() {
     setStatus("unauthenticated");
   };
 
-  const register = async (username, password) => {
+  const register = async (
+    username: string,
+    password: string
+  ): Promise<void> => {
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
