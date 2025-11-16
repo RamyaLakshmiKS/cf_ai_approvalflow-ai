@@ -105,3 +105,41 @@ User journeys map end-to-end flows, including happy paths and alternatives (e.g.
 - **Metrics for Success**: Approval time reduction (e.g., 80% auto-approved), escalation rate (<20%), user satisfaction (NPS >8).
 - **Risks**: Data security (encrypt SQL DB), policy accuracy (regular Vector DB updates), edge cases (e.g., concurrent requests).
 - **Next Steps**: Wireframe UI (chat/dashboard), define API schemas for DB integrations, prototype with sample data.
+
+---
+
+## PTO Request Flow (visual)
+
+The diagram below shows the runtime flow for a PTO request from a user through the agent and tools, including decision points for auto-approval vs escalation.
+
+```mermaid
+flowchart TD
+   U(Employee UI) --> S(Server/Router)
+   S --> A(Chat Agent)
+   A --> LLM(LLM reasoning)
+   LLM --> Validate(validate_pto_policy)
+   Validate --> Balance(get_pto_balance)
+   Validate --> Days(calculate_business_days)
+   Validate --> Blackout(check_blackout_periods)
+   Balance --> Validate
+   Days --> Validate
+   Blackout --> Validate
+   Validate --> Decision{Valid & Within Limit?}
+   Decision -->|Yes| Auto(Auto-approve)
+   Decision -->|No| Escalate(Escalate to Manager)
+   Auto --> Submit(submit_pto_request — auto_approved)
+   Escalate --> NotifyMgr(Notify Manager)
+   NotifyMgr --> M(Manager UI)
+   M --> SubmitPending(submit_pto_request — pending/denied)
+   Submit --> UpdateDB((D1 update: pto_requests, pto_balances, audit_log))
+   SubmitPending --> UpdateDB
+   UpdateDB --> U
+```
+```
+
+Notes:
+- `validate_pto_policy` composes multiple tools: `get_pto_balance`, `calculate_business_days`, and `check_blackout_periods`, then returns a recommendation.
+- On auto-approval the system calls `submit_pto_request` with `status=auto_approved` and updates balances and audit logs.
+- On escalation the manager reviews via the UI and the request is recorded as `pending` until resolution.
+
+See `docs/ARCHITECTURE.md` for higher-level diagrams and sequencing.
