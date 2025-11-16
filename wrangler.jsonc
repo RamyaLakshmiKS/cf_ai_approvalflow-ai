@@ -12,7 +12,7 @@
     "binding": "AI",
     "remote": true
   },
-    "vectorize": [
+  "vectorize": [
     {
       "binding": "VECTORIZE",
       "index_name": "handbook_vectors",

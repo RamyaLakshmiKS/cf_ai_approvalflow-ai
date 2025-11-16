@@ -1,6 +1,6 @@
 /**
  * ReAct Agent Implementation
- * 
+ *
  * This agent implements the Thought-Action-Observation loop:
  * 1. THOUGHT: LLM reasons about what to do
  * 2. ACTION: Execute a tool
@@ -152,7 +152,13 @@ Now, help the user with their request!`;
 /**
  * Parse the LLM response to extract thought and action
  */
-function parseAgentResponse(response: string): { thought: string; action: string; action_input: Record<string, any> } | null {
+function parseAgentResponse(
+  response: string
+): {
+  thought: string;
+  action: string;
+  action_input: Record<string, any>;
+} | null {
   try {
     console.log("[REACT-AGENT] Parsing LLM response");
     // Extract JSON from code blocks
@@ -163,9 +169,12 @@ function parseAgentResponse(response: string): { thought: string; action: string
     }
 
     const parsed = JSON.parse(jsonMatch[1]);
-    
+
     if (!parsed.action) {
-      console.error("[REACT-AGENT] No action found in parsed response:", parsed);
+      console.error(
+        "[REACT-AGENT] No action found in parsed response:",
+        parsed
+      );
       return null;
     }
 
@@ -176,7 +185,11 @@ function parseAgentResponse(response: string): { thought: string; action: string
       action_input: parsed.action_input || {}
     };
   } catch (error) {
-    console.error("[REACT-AGENT] Error parsing agent response:", error, response);
+    console.error(
+      "[REACT-AGENT] Error parsing agent response:",
+      error,
+      response
+    );
     return null;
   }
 }
@@ -190,33 +203,38 @@ export async function runReActAgent(
   context: ToolContext
 ): Promise<{ response: string; steps: ReActStep[] }> {
   console.log("[REACT-AGENT] Starting agent with message:", userMessage);
-  
+
   const steps: ReActStep[] = [];
-  const messages = [...conversationHistory, { role: "user", content: userMessage }];
-  
+  const messages = [
+    ...conversationHistory,
+    { role: "user", content: userMessage }
+  ];
+
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     console.log("[REACT-AGENT] Iteration", iteration + 1, "of", MAX_ITERATIONS);
-    
-    // Generate next action from LLM
-    const llmResponse = await context.env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, {
-      messages: [
-        { role: "system", content: getSystemPrompt() },
-        ...messages
-      ],
-      max_tokens: 1000,
-      temperature: 0.1 // Low temperature for more consistent reasoning
-    }) as any;
 
-    const responseText = (llmResponse.response || String(llmResponse)) as string;
+    // Generate next action from LLM
+    const llmResponse = (await context.env.AI.run(
+      "@cf/meta/llama-3.1-8b-instruct" as any,
+      {
+        messages: [{ role: "system", content: getSystemPrompt() }, ...messages],
+        max_tokens: 1000,
+        temperature: 0.1 // Low temperature for more consistent reasoning
+      }
+    )) as any;
+
+    const responseText = (llmResponse.response ||
+      String(llmResponse)) as string;
     console.log("[REACT-AGENT] LLM response received, parsing...");
-    
+
     // Parse the response
     const parsed = parseAgentResponse(responseText);
     if (!parsed) {
       console.warn("[REACT-AGENT] Failed to parse response, providing error");
       // LLM didn't follow format, provide error
       return {
-        response: "I apologize, but I'm having trouble processing your request. Could you please rephrase it?",
+        response:
+          "I apologize, but I'm having trouble processing your request. Could you please rephrase it?",
         steps
       };
     }
@@ -257,7 +275,10 @@ export async function runReActAgent(
       // Add error to conversation and continue
       messages.push(
         { role: "assistant", content: responseText },
-        { role: "user", content: `Error: ${errorMsg}. Please use a valid tool.` }
+        {
+          role: "user",
+          content: `Error: ${errorMsg}. Please use a valid tool.`
+        }
       );
       continue;
     }
@@ -267,7 +288,7 @@ export async function runReActAgent(
       console.log("[REACT-AGENT] Executing tool:", action);
       const observation = await tool.execute(action_input, context);
       console.log("[REACT-AGENT] Tool execution completed");
-      
+
       steps.push({
         iteration,
         thought,
@@ -279,13 +300,15 @@ export async function runReActAgent(
       // Add to conversation history
       messages.push(
         { role: "assistant", content: responseText },
-        { role: "user", content: `OBSERVATION: ${JSON.stringify(observation, null, 2)}` }
+        {
+          role: "user",
+          content: `OBSERVATION: ${JSON.stringify(observation, null, 2)}`
+        }
       );
-
     } catch (error) {
       const errorMsg = `Tool execution error: ${error instanceof Error ? error.message : String(error)}`;
       console.error("[REACT-AGENT] Error executing tool:", errorMsg);
-      
+
       steps.push({
         iteration,
         thought,
@@ -305,7 +328,8 @@ export async function runReActAgent(
   // Max iterations reached
   console.warn("[REACT-AGENT] Max iterations reached without completion");
   return {
-    response: "I apologize, but I wasn't able to complete your request within the allowed time. Please try breaking down your request into smaller parts.",
+    response:
+      "I apologize, but I wasn't able to complete your request within the allowed time. Please try breaking down your request into smaller parts.",
     steps
   };
 }

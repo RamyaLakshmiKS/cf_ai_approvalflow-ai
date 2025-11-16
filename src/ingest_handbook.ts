@@ -1,19 +1,19 @@
 // Note: We intentionally _do not_ use NodeFS APIs (Workers do not support 'fs')
 
 interface Env {
-	VECTORIZE: VectorizeIndex;
-	AI: Ai;
-	// Other optional env variables
+  VECTORIZE: VectorizeIndex;
+  AI: Ai;
+  // Other optional env variables
 }
 
 interface HandbookChunk {
-	id: string;
-	content: string;
-	metadata: {
-		section: string;
-		category: string;
-		last_updated: string;
-	};
+  id: string;
+  content: string;
+  metadata: {
+    section: string;
+    category: string;
+    last_updated: string;
+  };
 }
 
 // A small example Worker handler that ingests a sample Handbook into the
@@ -232,38 +232,45 @@ Reasons for discharge may include, but are not limited to:
 `;
 
 export async function ingestHandbook(env: Env, content?: string) {
-	if (!env || !env.AI) {
-		throw new Error('AI binding is not configured. Please configure `ai` in wrangler.jsonc.');
-	}
-	if (!env || !env.VECTORIZE) {
-		throw new Error('VECTORIZE binding is not configured. Please add the `vectorize` binding in wrangler.jsonc.');
-	}
-	// Use the embedded handbook content
-	const handbookContent = content || HANDBOOK_CONTENT;
+  if (!env || !env.AI) {
+    throw new Error(
+      "AI binding is not configured. Please configure `ai` in wrangler.jsonc."
+    );
+  }
+  if (!env || !env.VECTORIZE) {
+    throw new Error(
+      "VECTORIZE binding is not configured. Please add the `vectorize` binding in wrangler.jsonc."
+    );
+  }
+  // Use the embedded handbook content
+  const handbookContent = content || HANDBOOK_CONTENT;
 
-	// Chunk the handbook
-	const chunks = chunkHandbook(handbookContent);
+  // Chunk the handbook
+  const chunks = chunkHandbook(handbookContent);
 
-	// Generate embeddings and upsert
-	const vectors = [] as any[];
-	for (const chunk of chunks) {
-	const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
-		text: chunk.content
-	});
+  // Generate embeddings and upsert
+  const vectors = [] as any[];
+  for (const chunk of chunks) {
+    const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: chunk.content
+    });
 
-	vectors.push({
-		id: chunk.id,
-		values: (embedding as any).data[0],
-		metadata: chunk.metadata
-	});
-}	// Upsert to Vectorize in batches
-	const batchSize = 10;
-	for (let i = 0; i < vectors.length; i += batchSize) {
-		const batch = vectors.slice(i, i + batchSize);
-		await env.VECTORIZE.upsert(batch);
-	}
+    vectors.push({
+      id: chunk.id,
+      values: (embedding as any).data[0],
+      metadata: chunk.metadata
+    });
+  } // Upsert to Vectorize in batches
+  const batchSize = 10;
+  for (let i = 0; i < vectors.length; i += batchSize) {
+    const batch = vectors.slice(i, i + batchSize);
+    await env.VECTORIZE.upsert(batch);
+  }
 
-	return { message: `Successfully ingested ${chunks.length} chunks into Vectorize`, total_chunks: chunks.length };
+  return {
+    message: `Successfully ingested ${chunks.length} chunks into Vectorize`,
+    total_chunks: chunks.length
+  };
 }
 
 // Note: There is no default fetch handler exported to avoid exposing
@@ -272,86 +279,86 @@ export async function ingestHandbook(env: Env, content?: string) {
 // `data/handbook_vectors.json` for upload to Vectorize via Wrangler CLI.
 
 function chunkHandbook(content: string): HandbookChunk[] {
-	const chunks: HandbookChunk[] = [];
-	const lines = content.split('\n');
-	let currentSection = '';
-	let currentContent = '';
-	let chunkId = 0;
+  const chunks: HandbookChunk[] = [];
+  const lines = content.split("\n");
+  let currentSection = "";
+  let currentContent = "";
+  let chunkId = 0;
 
-	const isSectionHeader = (l: string) => {
-		// Treat lines that start with '## Section' or '## ' as section headers
-		return l.trim().startsWith('## ');
-	};
+  const isSectionHeader = (l: string) => {
+    // Treat lines that start with '## Section' or '## ' as section headers
+    return l.trim().startsWith("## ");
+  };
 
-	const extractSectionName = (headerLine: string) => {
-		// headerLine will be something like '## Section 4: Paid Time Off (PTO) & Leave'
-		const text = headerLine.replace(/^##\s+/, '').trim();
-		// If it contains 'Section N: ', drop the leading "Section N: " part
-		const sectionMatch = text.match(/Section\s+\d+:\s*(.*)/i);
-		if (sectionMatch && sectionMatch[1]) {
-			return sectionMatch[1].trim();
-		}
-		return text;
-	};
+  const extractSectionName = (headerLine: string) => {
+    // headerLine will be something like '## Section 4: Paid Time Off (PTO) & Leave'
+    const text = headerLine.replace(/^##\s+/, "").trim();
+    // If it contains 'Section N: ', drop the leading "Section N: " part
+    const sectionMatch = text.match(/Section\s+\d+:\s*(.*)/i);
+    if (sectionMatch && sectionMatch[1]) {
+      return sectionMatch[1].trim();
+    }
+    return text;
+  };
 
-	for (const line of lines) {
-		// If we encounter a doc-level title (starting with '# ') before the first
-		// section, use it as the 'section' for any leading content.
-		if (line.trim().startsWith('# ') && !currentSection) {
-			currentSection = line.replace(/^#\s+/, '').trim();
-			continue;
-		}
+  for (const line of lines) {
+    // If we encounter a doc-level title (starting with '# ') before the first
+    // section, use it as the 'section' for any leading content.
+    if (line.trim().startsWith("# ") && !currentSection) {
+      currentSection = line.replace(/^#\s+/, "").trim();
+      continue;
+    }
 
-		if (isSectionHeader(line)) {
-			// If there's an existing section content, push it as a chunk
-			if (currentContent.trim()) {
-				chunks.push({
-					id: `chunk-${chunkId++}`,
-					content: currentContent.trim(),
-					metadata: {
-						section: currentSection,
-						category: getCategory(currentSection),
-						last_updated: '2025-01-01'
-					}
-				});
-				currentContent = '';
-			}
+    if (isSectionHeader(line)) {
+      // If there's an existing section content, push it as a chunk
+      if (currentContent.trim()) {
+        chunks.push({
+          id: `chunk-${chunkId++}`,
+          content: currentContent.trim(),
+          metadata: {
+            section: currentSection,
+            category: getCategory(currentSection),
+            last_updated: "2025-01-01"
+          }
+        });
+        currentContent = "";
+      }
 
-			// Set the current section to the parsed header name
-			currentSection = extractSectionName(line);
-			currentContent += line + '\n';
-		} else {
-			currentContent += line + '\n';
-		}
-	}
+      // Set the current section to the parsed header name
+      currentSection = extractSectionName(line);
+      currentContent += line + "\n";
+    } else {
+      currentContent += line + "\n";
+    }
+  }
 
-	// Add the last accumulated section as a chunk
-	if (currentContent.trim()) {
-		chunks.push({
-			id: `chunk-${chunkId++}`,
-			content: currentContent.trim(),
-			metadata: {
-				section: currentSection,
-				category: getCategory(currentSection),
-				last_updated: '2025-01-01'
-			}
-		});
-	}
+  // Add the last accumulated section as a chunk
+  if (currentContent.trim()) {
+    chunks.push({
+      id: `chunk-${chunkId++}`,
+      content: currentContent.trim(),
+      metadata: {
+        section: currentSection,
+        category: getCategory(currentSection),
+        last_updated: "2025-01-01"
+      }
+    });
+  }
 
-	return chunks;
+  return chunks;
 }
 
 function getCategory(section: string): string {
-	const categoryMap: Record<string, string> = {
-		'Welcome to Cloudflare': 'general',
-		'Our Company & Culture': 'culture',
-		'Your Employment': 'employment',
-		'Paid Time Off (PTO) & Leave': 'pto',
-		'Compensation & Benefits': 'benefits',
-		'Travel & Expense Reimbursement': 'expenses',
-		'IT & Information Security': 'security',
-		'Personnel Policies & Records': 'policies'
-	};
+  const categoryMap: Record<string, string> = {
+    "Welcome to Cloudflare": "general",
+    "Our Company & Culture": "culture",
+    "Your Employment": "employment",
+    "Paid Time Off (PTO) & Leave": "pto",
+    "Compensation & Benefits": "benefits",
+    "Travel & Expense Reimbursement": "expenses",
+    "IT & Information Security": "security",
+    "Personnel Policies & Records": "policies"
+  };
 
-	return categoryMap[section] || 'general';
+  return categoryMap[section] || "general";
 }

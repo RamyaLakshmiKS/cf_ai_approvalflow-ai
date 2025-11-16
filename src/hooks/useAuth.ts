@@ -49,7 +49,10 @@ export function useAuth() {
       console.log("[HOOK] useAuth - Login successful, fetching user");
       await fetchUser();
     } else {
-      console.error("[HOOK] useAuth - Login failed with status:", response.status);
+      console.error(
+        "[HOOK] useAuth - Login failed with status:",
+        response.status
+      );
       throw new Error("Login failed");
     }
   };
@@ -74,7 +77,10 @@ export function useAuth() {
     });
 
     if (!response.ok) {
-      console.error("[HOOK] useAuth - Registration failed with status:", response.status);
+      console.error(
+        "[HOOK] useAuth - Registration failed with status:",
+        response.status
+      );
       throw new Error("Registration failed");
     }
     console.log("[HOOK] useAuth - Registration successful");

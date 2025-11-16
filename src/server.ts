@@ -7,8 +7,62 @@ import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   generateId,
   type StreamTextOnFinishCallback,
-  type ToolSet
+  type ToolSet,
+  type UIMessage,
+  type TextUIPart,
+  type ContentPart,
+  type Source,
+  type GeneratedFile,
+  type TypedToolCall,
+  type StaticToolCall,
+  type DynamicToolCall,
+  type TypedToolResult,
+  type StaticToolResult,
+  type DynamicToolResult,
+  type StepResult,
+  type FinishReason,
+  type LanguageModelUsage,
+  type ResponseMessage,
+  type LanguageModelRequestMetadata
 } from "ai";
+
+function createFinishEvent(responseText: string) {
+  const now = new Date();
+  const baseStep: StepResult<ToolSet> = {
+    content: [] as ContentPart<ToolSet>[],
+    text: responseText,
+    reasoning: [],
+    reasoningText: undefined,
+    files: [] as GeneratedFile[],
+    sources: [] as Source[],
+    toolCalls: [] as TypedToolCall<ToolSet>[],
+    staticToolCalls: [] as StaticToolCall<ToolSet>[],
+    dynamicToolCalls: [] as DynamicToolCall[],
+    toolResults: [] as TypedToolResult<ToolSet>[],
+    staticToolResults: [] as StaticToolResult<ToolSet>[],
+    dynamicToolResults: [] as DynamicToolResult[],
+    finishReason: "stop" as FinishReason,
+    usage: { tokens: 0 },
+    warnings: undefined,
+    request: {} as LanguageModelRequestMetadata,
+    response: {
+      id: generateId(),
+      timestamp: now,
+      modelId: "approvalflow",
+      messages: [] as ResponseMessage[]
+    },
+    providerMetadata: undefined
+  };
+
+  return {
+    ...baseStep,
+    steps: [baseStep],
+    totalUsage: { tokens: 0 }
+  } satisfies StepResult<ToolSet> & {
+    steps: StepResult<ToolSet>[];
+    totalUsage: LanguageModelUsage;
+  };
+}
 import { runReActAgent } from "./react-agent";
 import type { ToolContext } from "./tools";
 
@@ -24,7 +78,7 @@ export class Chat extends AIChatAgent<Env> {
    */
   async fetch(request: Request) {
     // Extract user ID from headers set by middleware
-    this.userId = request.headers.get('X-User-Id') || undefined;
+    this.userId = request.headers.get("X-User-Id") || undefined;
     return super.fetch(request);
   }
 
@@ -35,29 +89,40 @@ export class Chat extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
   ): Promise<Response | undefined> {
+    const finishStream = (text: string) => onFinish(createFinishEvent(text));
     try {
       console.log("[AGENT] Processing chat message for user:", this.userId);
-      
+
       // Get the user message
-      const userMessage = this.messages[this.messages.length - 1];
-      if (!userMessage || !userMessage.parts || userMessage.parts.length === 0) {
+      const userMessage = this.messages.at(-1);
+      if (
+        !userMessage ||
+        !userMessage.parts ||
+        userMessage.parts.length === 0
+      ) {
         console.warn("[AGENT] Empty user message received");
-        onFinish({} as any);
+        finishStream("");
         return;
       }
 
       // Safety check: only process user messages, not assistant responses
-      if (userMessage.role !== 'user') {
-        console.log("[AGENT] Last message is from", userMessage.role, "- skipping to prevent loops");
-        onFinish({} as any);
+      if (userMessage.role !== "user") {
+        console.log(
+          "[AGENT] Last message is from",
+          userMessage.role,
+          "- skipping to prevent loops"
+        );
+        finishStream("");
         return;
       }
 
       // Extract text from the message
-      const textPart = userMessage.parts.find((p: any) => p.type === 'text') as any;
+      const textPart = userMessage.parts.find(
+        (part): part is TextUIPart => part.type === "text"
+      );
       if (!textPart) {
         console.warn("[AGENT] No text part found in message");
-        onFinish({} as any);
+        finishStream("");
         return;
       }
 
@@ -66,20 +131,28 @@ export class Chat extends AIChatAgent<Env> {
       // Check authentication
       if (!this.userId) {
         console.error("[AGENT] No userId found in request");
-        onFinish({} as any);
+        finishStream("");
         return;
       }
 
       // Build conversation history
-      const conversationHistory = this.messages.slice(0, -1).map((msg: any) => {
-        const text = msg.parts.find((p: any) => p.type === 'text')?.text || '';
+      const conversationHistory: Array<{
+        role: UIMessage["role"];
+        content: string;
+      }> = this.messages.slice(0, -1).map((msg) => {
+        const text =
+          msg.parts.find((part): part is TextUIPart => part.type === "text")
+            ?.text || "";
         return {
-          role: msg.role === 'user' ? 'user' : 'assistant',
+          role: msg.role === "user" ? "user" : "assistant",
           content: text
         };
       });
 
-      console.log("[AGENT] Conversation history length:", conversationHistory.length);
+      console.log(
+        "[AGENT] Conversation history length:",
+        conversationHistory.length
+      );
 
       // Create tool context
       const toolContext: ToolContext = {
@@ -95,9 +168,16 @@ export class Chat extends AIChatAgent<Env> {
         toolContext
       );
 
-      console.log("[AGENT] ReAct agent completed with", result.steps.length, "steps");
+      console.log(
+        "[AGENT] ReAct agent completed with",
+        result.steps.length,
+        "steps"
+      );
       console.log("[AGENT] Response text length:", result.response.length);
-      console.log("[AGENT] ReAct Steps:", JSON.stringify(result.steps, null, 2));
+      console.log(
+        "[AGENT] ReAct Steps:",
+        JSON.stringify(result.steps, null, 2)
+      );
 
       // Save the response message
       await this.saveMessages([
@@ -118,11 +198,10 @@ export class Chat extends AIChatAgent<Env> {
       ]);
 
       console.log("[AGENT] Response saved to message history");
-      onFinish({} as any);
-
+      finishStream(result.response);
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
-      onFinish({} as any);
+      finishStream("");
     }
   }
 
@@ -187,8 +266,13 @@ async function verifyPassword(password: string, salt: string, hash: string) {
 
   // If that fails, try interpreting 'salt' as a base64-encoded raw salt and use those bytes as the salt.
   try {
-    const decodedSaltBinaryString = typeof atob === "function" ? atob(salt) : Buffer.from(salt, "base64").toString("binary");
-    const decodedSaltArray = new Uint8Array(Array.from(decodedSaltBinaryString).map((c: any) => c.charCodeAt(0)));
+    const decodedSaltBinaryString =
+      typeof atob === "function"
+        ? atob(salt)
+        : Buffer.from(salt, "base64").toString("binary");
+    const decodedSaltArray = new Uint8Array(
+      Array.from(decodedSaltBinaryString).map((c: any) => c.charCodeAt(0))
+    );
 
     // Hash using raw salt bytes
     const encoder = new TextEncoder();
@@ -204,7 +288,7 @@ async function verifyPassword(password: string, salt: string, hash: string) {
         name: "PBKDF2",
         salt: decodedSaltArray,
         iterations: 100000,
-        hash: "SHA-256",
+        hash: "SHA-256"
       },
       keyMaterial,
       256
@@ -238,7 +322,10 @@ app.post("/api/auth/register", async (c) => {
       .first();
 
     if (existingUser) {
-      console.warn("[AUTH] Register failed - username already taken:", username);
+      console.warn(
+        "[AUTH] Register failed - username already taken:",
+        username
+      );
       return c.json({ error: "Username already taken" }, 409);
     }
 
@@ -262,7 +349,11 @@ app.post("/api/auth/register", async (c) => {
 });
 
 // Helper to log invalid login attempts without exposing sensitive info
-function logInvalidLoginAttempt(c: any, reason: string, username?: string | null) {
+function logInvalidLoginAttempt(
+  c: any,
+  reason: string,
+  username?: string | null
+) {
   try {
     // Hono context may wrap headers differently in tests/edge runtimes; accept multiple fallbacks
     let headers: any = undefined;
@@ -280,7 +371,11 @@ function logInvalidLoginAttempt(c: any, reason: string, username?: string | null
       }
     };
 
-    const ip = headerGet("cf-connecting-ip") || headerGet("x-forwarded-for") || headerGet("x-real-ip") || "unknown";
+    const ip =
+      headerGet("cf-connecting-ip") ||
+      headerGet("x-forwarded-for") ||
+      headerGet("x-real-ip") ||
+      "unknown";
     const ua = headerGet("user-agent") || "unknown";
     const timestamp = new Date().toISOString();
     // Don't log the password or any secrets
@@ -325,7 +420,10 @@ app.post("/api/auth/login", async (c) => {
 
     if (!passwordIsValid) {
       // Log invalid password attempts but avoid logging the password itself
-      console.warn("[AUTH] Login failed - invalid password for user:", username);
+      console.warn(
+        "[AUTH] Login failed - invalid password for user:",
+        username
+      );
       logInvalidLoginAttempt(c, "invalid_password", username);
       return c.json({ error: "Invalid credentials" }, 401);
     }
@@ -334,7 +432,15 @@ app.post("/api/auth/login", async (c) => {
     const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
     const sessionId = crypto.randomUUID();
     const expiresAtMillis = expires_at.getTime();
-    console.log("[AUTH] Creating session for user:", { userId: user.id, sessionId, expiresAtISO: expires_at.toISOString(), expiresAtMillis, nowMillis: Date.now(), tokenLength: sessionToken.length, tokenFirstChars: sessionToken.substring(0, 10) });
+    console.log("[AUTH] Creating session for user:", {
+      userId: user.id,
+      sessionId,
+      expiresAtISO: expires_at.toISOString(),
+      expiresAtMillis,
+      nowMillis: Date.now(),
+      tokenLength: sessionToken.length,
+      tokenFirstChars: sessionToken.substring(0, 10)
+    });
 
     await c.env.APP_DB.prepare(
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)"
@@ -342,7 +448,11 @@ app.post("/api/auth/login", async (c) => {
       .bind(sessionId, user.id, sessionToken, expiresAtMillis)
       .run();
 
-    console.log("[AUTH] Session inserted into database:", { sessionId, tokenLength: sessionToken.length, tokenFirstChars: sessionToken.substring(0, 10) });
+    console.log("[AUTH] Session inserted into database:", {
+      sessionId,
+      tokenLength: sessionToken.length,
+      tokenFirstChars: sessionToken.substring(0, 10)
+    });
 
     setCookie(c, "session_token", sessionToken, {
       httpOnly: true,
@@ -351,7 +461,10 @@ app.post("/api/auth/login", async (c) => {
       expires: expires_at
     });
 
-    console.log("[AUTH] Login successful for user:", { userId: user.id, username });
+    console.log("[AUTH] Login successful for user:", {
+      userId: user.id,
+      username
+    });
     return c.json({ message: "Logged in successfully" });
   } catch (error) {
     console.error("[AUTH] Login error:", error);
@@ -417,7 +530,10 @@ app.get("/api/auth/me", async (c) => {
       return c.json({ error: "User not found" }, 404);
     }
 
-    console.log("[AUTH] Current user fetched successfully:", { userId: user.id, username: user.username });
+    console.log("[AUTH] Current user fetched successfully:", {
+      userId: user.id,
+      username: user.username
+    });
     return c.json(user);
   } catch (error) {
     console.error("[AUTH] Me endpoint error:", error);
@@ -436,7 +552,10 @@ app.get("/check-ai-provider", (c) => {
 });
 
 // Middleware to extract user from session for agent requests
-async function getUserFromSession(request: Request, env: Env): Promise<{ id: string; username: string } | null> {
+async function getUserFromSession(
+  request: Request,
+  env: Env
+): Promise<{ id: string; username: string } | null> {
   try {
     // Extract session token from cookie header
     const cookieHeader = request.headers.get("Cookie");
@@ -447,12 +566,15 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
 
     let sessionToken = cookieHeader
       .split(";")
-      .find(c => c.trim().startsWith("session_token="))
+      .find((c) => c.trim().startsWith("session_token="))
       ?.split("=")[1]
       ?.trim();
 
     if (!sessionToken) {
-      console.log("[MIDDLEWARE] No session token in cookies. Cookies:", cookieHeader);
+      console.log(
+        "[MIDDLEWARE] No session token in cookies. Cookies:",
+        cookieHeader
+      );
       return null;
     }
 
@@ -464,17 +586,31 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
       return null;
     }
 
-    console.log("[MIDDLEWARE] Found session token, decoded length:", sessionToken.length, "decoded first 10 chars:", sessionToken.substring(0, 10), "looking up session");
+    console.log(
+      "[MIDDLEWARE] Found session token, decoded length:",
+      sessionToken.length,
+      "decoded first 10 chars:",
+      sessionToken.substring(0, 10),
+      "looking up session"
+    );
 
     // Get session from database
-    console.log("[MIDDLEWARE] Querying database for token (first 10 chars):", sessionToken.substring(0, 10));
+    console.log(
+      "[MIDDLEWARE] Querying database for token (first 10 chars):",
+      sessionToken.substring(0, 10)
+    );
     const session = await env.APP_DB.prepare(
       "SELECT user_id, expires_at FROM sessions WHERE token = ?"
     )
       .bind(sessionToken)
       .first<{ user_id: string; expires_at: number }>();
 
-    console.log("[MIDDLEWARE] Session lookup result:", { found: !!session, expiresAt: session?.expires_at, now: Date.now(), tokenSearched: sessionToken.substring(0, 10) });
+    console.log("[MIDDLEWARE] Session lookup result:", {
+      found: !!session,
+      expiresAt: session?.expires_at,
+      now: Date.now(),
+      tokenSearched: sessionToken.substring(0, 10)
+    });
 
     if (!session) {
       console.warn("[MIDDLEWARE] Session not found");
@@ -484,12 +620,18 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
     // expires_at is stored as milliseconds (Integer), compare directly
     const sessionExpired = (session.expires_at as number) < Date.now();
     if (sessionExpired) {
-      console.warn("[MIDDLEWARE] Session expired:", { expiresAt: session.expires_at, now: Date.now() });
+      console.warn("[MIDDLEWARE] Session expired:", {
+        expiresAt: session.expires_at,
+        now: Date.now()
+      });
       return null;
     }
     console.log("[MIDDLEWARE] Session is valid");
 
-    console.log("[MIDDLEWARE] Session found, looking up user:", session.user_id);
+    console.log(
+      "[MIDDLEWARE] Session found, looking up user:",
+      session.user_id
+    );
 
     // Get user
     const user = await env.APP_DB.prepare(
@@ -512,14 +654,17 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
 app.all("*", async (c) => {
   const path = c.req.path;
   console.log("[ROUTER] Incoming request:", { method: c.req.method, path });
-  
+
   // Get user from session
   const user = await getUserFromSession(c.req.raw, c.env);
-  
+
   if (!user) {
     // For agent routes, require authentication
-    if (path.includes('/agents/')) {
-      console.warn("[ROUTER] Agent request without authentication for path:", path);
+    if (path.includes("/agents/")) {
+      console.warn(
+        "[ROUTER] Agent request without authentication for path:",
+        path
+      );
       return c.json({ error: "Authentication required" }, 401);
     }
   }
@@ -532,12 +677,12 @@ app.all("*", async (c) => {
   const requestWithUser = new Request(c.req.raw.url, {
     method: c.req.raw.method,
     headers: new Headers(c.req.raw.headers),
-    body: c.req.raw.body,
+    body: c.req.raw.body
   });
-  
+
   if (user) {
-    requestWithUser.headers.set('X-User-Id', user.id);
-    requestWithUser.headers.set('X-Username', user.username);
+    requestWithUser.headers.set("X-User-Id", user.id);
+    requestWithUser.headers.set("X-Username", user.username);
     console.log("[ROUTER] Added user headers to request");
   }
 
@@ -545,10 +690,13 @@ app.all("*", async (c) => {
   const response = await routeAgentRequest(requestWithUser, c.env);
 
   if (!response) {
-    console.warn("[ROUTER] No response from agent, returning 404 for path:", path);
+    console.warn(
+      "[ROUTER] No response from agent, returning 404 for path:",
+      path
+    );
     return new Response("Not found", { status: 404 });
   }
-  
+
   console.log("[ROUTER] Request handled successfully");
   return response;
 });
@@ -557,21 +705,25 @@ app.get("/api/debug/sessions", async (c) => {
   try {
     const sessions = await c.env.APP_DB.prepare(
       "SELECT id, user_id, token, expires_at FROM sessions LIMIT 5"
-    )
-      .all<{ id: string; user_id: string; token: string; expires_at: number }>();
+    ).all<{ id: string; user_id: string; token: string; expires_at: number }>();
 
     console.log("[DEBUG] Sessions in database:", sessions.results?.length || 0);
-    
-    const sessionData = sessions.results?.map(s => ({
-      id: s.id,
-      user_id: s.user_id,
-      tokenLength: s.token.length,
-      tokenFirstChars: s.token.substring(0, 10),
-      expiresAt: s.expires_at,
-      expiresAtDate: new Date(s.expires_at).toISOString()
-    })) || [];
 
-    return c.json({ sessions: sessionData, now: Date.now(), nowISO: new Date().toISOString() });
+    const sessionData =
+      sessions.results?.map((s) => ({
+        id: s.id,
+        user_id: s.user_id,
+        tokenLength: s.token.length,
+        tokenFirstChars: s.token.substring(0, 10),
+        expiresAt: s.expires_at,
+        expiresAtDate: new Date(s.expires_at).toISOString()
+      })) || [];
+
+    return c.json({
+      sessions: sessionData,
+      now: Date.now(),
+      nowISO: new Date().toISOString()
+    });
   } catch (error) {
     console.error("[DEBUG] Error fetching sessions:", error);
     return c.json({ error: "Failed to fetch sessions" }, 500);
