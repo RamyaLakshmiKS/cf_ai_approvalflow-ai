@@ -58,6 +58,30 @@ npm start
 npm run deploy
 ```
 
+## Demo Users (for testing/demo)
+
+This repository includes a seed migration that inserts three demo users for quick local testing and demo purposes. All three use the same plaintext password: `Password123!`.
+
+1. ramya_manager - role: manager, employee_level: senior, department: People Ops, hire_date: 2018-06-01
+2. ramya_senior - role: employee, employee_level: senior, department: Engineering, hire_date: 2021-09-01 (manager: ramya_manager)
+3. ramya_junior - role: employee, employee_level: junior, department: Engineering, hire_date: 2024-03-01 (manager: ramya_manager)
+
+The database migration file that seeds these users is: `migrations/0007_seed_ramya_users.sql`.
+
+Note: This migration uses SQLite's `ON CONFLICT(username) DO UPDATE` UPSERT behavior to be idempotent and does not include explicit SQL transactions, to remain compatible with Cloudflare D1 migration execution.
+
+Additionally, `migrations/0007_seed_ramya_users.sql` now includes `CREATE TABLE IF NOT EXISTS` statements for `users` and `sessions` so that the seed works even if prior auth schema migrations were applied out-of-order or a migration dropped tables. This helps avoid "no such table: users" errors during migration in D1 environments.
+
+Example: logging in with `ramya_manager` and the shared password:
+
+```bash
+curl -X POST http://localhost:8787/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "ramya_manager", "password":"Password123!"}'
+```
+
+The server will set an HTTP-only cookie called `session_token` on successful login.
+
 ## Project Structure
 
 ```

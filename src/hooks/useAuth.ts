@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface User {
   id: string;
@@ -14,17 +14,20 @@ export function useAuth() {
 
   const fetchUser = useCallback(async () => {
     try {
+      console.log("[HOOK] useAuth - Fetching current user");
       const response = await fetch("/api/auth/me");
       if (response.ok) {
         const userData = (await response.json()) as User;
+        console.log("[HOOK] useAuth - User authenticated:", userData.username);
         setUser(userData);
         setStatus("authenticated");
       } else {
+        console.log("[HOOK] useAuth - User not authenticated");
         setUser(null);
         setStatus("unauthenticated");
       }
     } catch (error) {
-      console.error("Failed to fetch user", error);
+      console.error("[HOOK] useAuth - Failed to fetch user:", error);
       setUser(null);
       setStatus("unauthenticated");
     }
@@ -35,6 +38,7 @@ export function useAuth() {
   }, [fetchUser]);
 
   const login = async (username: string, password: string): Promise<void> => {
+    console.log("[HOOK] useAuth - Login attempt for user:", username);
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -42,22 +46,30 @@ export function useAuth() {
     });
 
     if (response.ok) {
+      console.log("[HOOK] useAuth - Login successful, fetching user");
       await fetchUser();
     } else {
+      console.error(
+        "[HOOK] useAuth - Login failed with status:",
+        response.status
+      );
       throw new Error("Login failed");
     }
   };
 
   const logout = async () => {
+    console.log("[HOOK] useAuth - Logging out");
     await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
     setStatus("unauthenticated");
+    console.log("[HOOK] useAuth - Logged out successfully");
   };
 
   const register = async (
     username: string,
     password: string
   ): Promise<void> => {
+    console.log("[HOOK] useAuth - Registration attempt for user:", username);
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,8 +77,13 @@ export function useAuth() {
     });
 
     if (!response.ok) {
+      console.error(
+        "[HOOK] useAuth - Registration failed with status:",
+        response.status
+      );
       throw new Error("Registration failed");
     }
+    console.log("[HOOK] useAuth - Registration successful");
   };
 
   return { user, status, login, logout, register };

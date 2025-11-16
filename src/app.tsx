@@ -1,36 +1,35 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
-import { useEffect, useState, useRef, useCallback, use } from "react";
-import { useAgent } from "agents/react";
-import { isToolUIPart } from "ai";
-import { useAgentChat } from "agents/ai-react";
+
 import type { UIMessage } from "@ai-sdk/react";
-import type { tools } from "./tools";
-import { useAuthContext } from "@/providers/AuthProvider";
-import { Login } from "@/components/auth/Login";
-import { Loader } from "@/components/loader/Loader";
-
-// Component imports
-import { Button } from "@/components/button/Button";
-import { Card } from "@/components/card/Card";
-import { Avatar } from "@/components/avatar/Avatar";
-import { Toggle } from "@/components/toggle/Toggle";
-import { Textarea } from "@/components/textarea/Textarea";
-import { MemoizedMarkdown } from "@/components/memoized-markdown";
-import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
-import { DropdownMenu } from "@/components/dropdown/DropdownMenu";
-
 // Icon imports
 import {
   Bug,
   Moon,
+  PaperPlaneTilt,
   Robot,
+  SignOut,
+  Stop,
   Sun,
   Trash,
-  PaperPlaneTilt,
-  Stop,
-  SignOut,
   User
 } from "@phosphor-icons/react";
+import { useAgentChat } from "agents/ai-react";
+import { useAgent } from "agents/react";
+import { isToolUIPart } from "ai";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+import { Login } from "@/components/auth/Login";
+import { Avatar } from "@/components/avatar/Avatar";
+// Component imports
+import { Button } from "@/components/button/Button";
+import { Card } from "@/components/card/Card";
+import { DropdownMenu } from "@/components/dropdown/DropdownMenu";
+import { Loader } from "@/components/loader/Loader";
+import { MemoizedMarkdown } from "@/components/memoized-markdown";
+import { Textarea } from "@/components/textarea/Textarea";
+import { Toggle } from "@/components/toggle/Toggle";
+import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import { useAuthContext } from "@/providers/AuthProvider";
+import type { tools } from "./tools";
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
@@ -62,6 +61,7 @@ function ChatInterface() {
     }
 
     // Save theme preference to localStorage
+    console.log("[UI] Saving theme to localStorage:", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
 
@@ -72,6 +72,7 @@ function ChatInterface() {
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
+    console.log("[UI] Theme toggled to:", newTheme);
     setTheme(newTheme);
   };
 
@@ -84,6 +85,7 @@ function ChatInterface() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     setAgentInput(e.target.value);
+    console.log("[UI] Input changed, length:", e.target.value.length);
   };
 
   const handleAgentSubmit = async (
@@ -94,6 +96,7 @@ function ChatInterface() {
     if (!agentInput.trim()) return;
 
     const message = agentInput;
+    console.log("[UI] User submitting message:", message);
     setAgentInput("");
 
     // Send message to agent
@@ -103,9 +106,10 @@ function ChatInterface() {
         parts: [{ type: "text", text: message }]
       },
       {
-        body: extraData
+        body: { ...extraData, user }
       }
     );
+    console.log("[UI] Message sent to agent");
   };
 
   const {
@@ -121,6 +125,7 @@ function ChatInterface() {
 
   // Scroll to bottom when messages change
   useEffect(() => {
+    console.log("[UI] Message count:", agentMessages.length);
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
@@ -215,18 +220,14 @@ function ChatInterface() {
                 type: "button",
                 label: "Logout",
                 icon: <SignOut size={16} />,
-                onClick: logout
+                onClick: () => {
+                  console.log("[UI] User logging out:", user?.username);
+                  logout();
+                }
               }
             ]}
           >
-            <Button
-              variant="ghost"
-              size="md"
-              shape="square"
-              className="rounded-full h-9 w-9"
-            >
-              <User size={20} />
-            </Button>
+            <User size={20} />
           </DropdownMenu>
         </div>
 

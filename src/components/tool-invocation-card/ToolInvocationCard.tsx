@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { CaretDown, Robot } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { Robot, CaretDown } from "@phosphor-icons/react";
+import { useState } from "react";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { APPROVAL } from "@/shared";
