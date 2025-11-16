@@ -80,8 +80,23 @@ export class Chat extends AIChatAgent<Env> {
    * Override fetch to capture user ID from headers
    */
   async fetch(request: Request) {
+    console.log("[CHAT] fetch() called");
+    console.log("[CHAT] Request URL:", request.url);
+    console.log("[CHAT] Request method:", request.method);
+
     // Extract user ID from headers set by middleware
-    this.userId = request.headers.get("X-User-Id") || undefined;
+    const userId = request.headers.get("X-User-Id");
+    const username = request.headers.get("X-Username");
+    console.log(
+      "[CHAT] Headers: X-User-Id =",
+      userId,
+      ", X-Username =",
+      username
+    );
+
+    this.userId = userId || undefined;
+    console.log("[CHAT] this.userId set to:", this.userId);
+
     return super.fetch(request);
   }
 
@@ -94,7 +109,8 @@ export class Chat extends AIChatAgent<Env> {
   ): Promise<Response | undefined> {
     const finishStream = (text: string) => onFinish(createFinishEvent(text));
     try {
-      console.log("[AGENT] Processing chat message for user:", this.userId);
+      console.log("[AGENT] Processing chat message");
+      console.log("[AGENT] this.userId from fetch():", this.userId);
 
       // Get the user message
       const userMessage = this.messages[this.messages.length - 1];
@@ -113,7 +129,12 @@ export class Chat extends AIChatAgent<Env> {
         console.log(
           "[AGENT] Last message is from",
           userMessage.role,
-          "- skipping to prevent loops"
+          "- skipping to prevent infinite loops"
+        );
+        console.log("[AGENT] Total messages:", this.messages.length);
+        console.log(
+          "[AGENT] Last 2 messages:",
+          this.messages.slice(-2).map((m) => m.role)
         );
         finishStream("");
         return;
@@ -132,9 +153,20 @@ export class Chat extends AIChatAgent<Env> {
 
       console.log("[AGENT] User message:", textPart.text);
 
-      // Check authentication
-      if (!this.userId) {
-        console.error("[AGENT] No userId found in request");
+      // Try to get userId from multiple sources
+      let userId = this.userId;
+      console.log("[AGENT] Attempting to get userId, current:", userId);
+
+      // If userId not set from fetch(), it might be in the stored context
+      // For Agent/WebSocket connections, we may need to look it up from session
+      // For now, warn if we don't have it
+      if (!userId) {
+        console.error(
+          "[AGENT] No userId available - check if fetch() was called and headers were passed"
+        );
+        console.warn(
+          "[AGENT] This typically happens when the agent connection doesn't receive X-User-Id header"
+        );
         finishStream("");
         return;
       }
@@ -159,7 +191,7 @@ export class Chat extends AIChatAgent<Env> {
       // Create tool context
       const toolContext: ToolContext = {
         env: this.env,
-        userId: this.userId
+        userId: userId
       };
 
       // Run the ReAct agent
