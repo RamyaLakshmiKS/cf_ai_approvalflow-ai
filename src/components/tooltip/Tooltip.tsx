@@ -1,6 +1,6 @@
-import { useTooltip } from "@/providers/TooltipProvider";
-import { cn } from "@/lib/utils";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+import { useTooltip } from "@/providers/TooltipProvider";
 
 export type TooltipProps = {
   children: React.ReactNode;

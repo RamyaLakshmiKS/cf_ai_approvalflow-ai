@@ -249,7 +249,7 @@ export async function ingestHandbook(env: Env, content?: string) {
   const chunks = chunkHandbook(handbookContent);
 
   // Generate embeddings and upsert
-  const vectors = [] as any[];
+  const vectors: { id: string; values: number[]; metadata: unknown }[] = [];
   for (const chunk of chunks) {
     const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
       text: chunk.content
@@ -257,14 +257,14 @@ export async function ingestHandbook(env: Env, content?: string) {
 
     vectors.push({
       id: chunk.id,
-      values: (embedding as any).data[0],
+      values: (embedding as { data: number[][] }).data[0],
       metadata: chunk.metadata
     });
   } // Upsert to Vectorize in batches
   const batchSize = 10;
   for (let i = 0; i < vectors.length; i += batchSize) {
     const batch = vectors.slice(i, i + batchSize);
-    await env.VECTORIZE.upsert(batch);
+    await env.VECTORIZE.upsert(batch as VectorizeVector[]);
   }
 
   return {
@@ -295,7 +295,7 @@ function chunkHandbook(content: string): HandbookChunk[] {
     const text = headerLine.replace(/^##\s+/, "").trim();
     // If it contains 'Section N: ', drop the leading "Section N: " part
     const sectionMatch = text.match(/Section\s+\d+:\s*(.*)/i);
-    if (sectionMatch && sectionMatch[1]) {
+    if (sectionMatch?.[1]) {
       return sectionMatch[1].trim();
     }
     return text;
@@ -326,9 +326,9 @@ function chunkHandbook(content: string): HandbookChunk[] {
 
       // Set the current section to the parsed header name
       currentSection = extractSectionName(line);
-      currentContent += line + "\n";
+      currentContent += `${line}\n`;
     } else {
-      currentContent += line + "\n";
+      currentContent += `${line}\n`;
     }
   }
 

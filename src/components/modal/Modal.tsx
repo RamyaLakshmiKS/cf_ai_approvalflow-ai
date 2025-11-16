@@ -1,9 +1,8 @@
+import { X } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import useClickOutside from "@/hooks/useClickOutside";
-import { X } from "@phosphor-icons/react";
-
-import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 type ModalProps = {

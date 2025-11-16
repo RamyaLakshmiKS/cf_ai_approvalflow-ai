@@ -9,8 +9,8 @@
  * 5. FINAL ANSWER: Provide response to user
  */
 
-import { tools, getToolDescriptions, type ToolContext } from "./tools";
 import { getSystemPrompt } from "./prompts";
+import { type ToolContext, tools } from "./tools";
 
 /**
  * Maximum number of reasoning iterations to prevent infinite loops
@@ -24,8 +24,8 @@ interface ReActStep {
   iteration: number;
   thought: string;
   action: string;
-  action_input: Record<string, any>;
-  observation: any;
+  action_input: Record<string, unknown>;
+  observation: unknown;
 }
 
 /**
@@ -34,7 +34,7 @@ interface ReActStep {
 function parseAgentResponse(response: string): {
   thought: string;
   action: string;
-  action_input: Record<string, any>;
+  action_input: Record<string, unknown>;
 } | null {
   try {
     console.log("[REACT-AGENT] Parsing LLM response");
@@ -98,15 +98,15 @@ export async function runReActAgent(
 
     // Generate next action from LLM
     const llmResponse = (await context.env.AI.run(
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as any,
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as keyof AiModels,
       {
         messages: [{ role: "system", content: getSystemPrompt() }, ...messages],
         max_tokens: 1500,
         temperature: 0.2 // Slightly higher for better reasoning
       }
-    )) as any;
+    )) as unknown;
 
-    const responseText = (llmResponse.response ||
+    const responseText = ((llmResponse as { response?: string }).response ||
       String(llmResponse)) as string;
     console.log("[REACT-AGENT] LLM response received, parsing...");
 
@@ -130,10 +130,7 @@ export async function runReActAgent(
       const isGreeting = userGreetings.some(
         (greeting) =>
           userMessage.toLowerCase().trim() === greeting ||
-          userMessage
-            .toLowerCase()
-            .trim()
-            .startsWith(greeting + " ")
+          userMessage.toLowerCase().trim().startsWith(`${greeting} `)
       );
 
       if (isGreeting && responseText.length < 300) {
@@ -177,7 +174,9 @@ export async function runReActAgent(
       });
 
       return {
-        response: action_input.response || "I've completed your request.",
+        response:
+          (action_input as { response?: string }).response ||
+          "I've completed your request.",
         steps
       };
     }

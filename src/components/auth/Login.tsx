@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useAuthContext } from "@/providers/AuthProvider";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { Input } from "@/components/input/Input";
 import { Label } from "@/components/label/Label";
+import { useAuthContext } from "@/providers/AuthProvider";
 
 export function Login() {
   const [username, setUsername] = useState("");

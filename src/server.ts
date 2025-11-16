@@ -1,27 +1,26 @@
 import { routeAgentRequest, type Schedule } from "agents";
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { getCookie, deleteCookie, setCookie } from "hono/cookie";
-
 import { AIChatAgent } from "agents/ai-chat-agent";
 import {
-  generateId,
-  type StreamTextOnFinishCallback,
-  type ToolSet,
-  type UIMessage,
-  type TextUIPart,
-  type GeneratedFile,
-  type TypedToolCall,
-  type StaticToolCall,
   type DynamicToolCall,
-  type TypedToolResult,
-  type StaticToolResult,
   type DynamicToolResult,
-  type StepResult,
   type FinishReason,
+  type GeneratedFile,
+  generateId,
+  type LanguageModelRequestMetadata,
   type LanguageModelUsage,
-  type LanguageModelRequestMetadata
+  type StaticToolCall,
+  type StaticToolResult,
+  type StepResult,
+  type StreamTextOnFinishCallback,
+  type TextUIPart,
+  type ToolSet,
+  type TypedToolCall,
+  type TypedToolResult,
+  type UIMessage
 } from "ai";
+import { Hono, type Context } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 
 function createFinishEvent(responseText: string) {
   const now = new Date();
@@ -60,6 +59,7 @@ function createFinishEvent(responseText: string) {
     totalUsage: LanguageModelUsage;
   };
 }
+
 import { runReActAgent } from "./react-agent";
 import type { ToolContext } from "./tools";
 
@@ -130,7 +130,7 @@ export class Chat extends AIChatAgent<Env> {
         userMessage.parts.length === 0
       ) {
         console.warn("[AGENT] Empty user message received");
-        const result = finishStream("");
+        finishStream("");
         // Save empty assistant message
         await this.saveMessages([
           ...this.messages,
@@ -156,7 +156,7 @@ export class Chat extends AIChatAgent<Env> {
           "[AGENT] Last 2 messages:",
           this.messages.slice(-2).map((m) => m.role)
         );
-        const result = finishStream("");
+        finishStream("");
         return;
       }
 
@@ -167,7 +167,7 @@ export class Chat extends AIChatAgent<Env> {
       const textPart = userMessage.parts.find(isTextPart);
       if (!textPart) {
         console.warn("[AGENT] No text part found in message");
-        const result = finishStream("");
+        finishStream("");
         await this.saveMessages([
           ...this.messages,
           {
@@ -350,7 +350,7 @@ async function verifyPassword(password: string, salt: string, hash: string) {
         ? atob(salt)
         : Buffer.from(salt, "base64").toString("binary");
     const decodedSaltArray = new Uint8Array(
-      Array.from(decodedSaltBinaryString).map((c: any) => c.charCodeAt(0))
+      Array.from(decodedSaltBinaryString).map((c: string) => c.charCodeAt(0))
     );
 
     // Hash using raw salt bytes
@@ -375,7 +375,7 @@ async function verifyPassword(password: string, salt: string, hash: string) {
     const hashArray = Array.from(new Uint8Array(derivedBits));
     const altHash = btoa(String.fromCharCode.apply(null, hashArray));
     return altHash === hash;
-  } catch (e) {
+  } catch (_e) {
     // If anything goes wrong (atob not available, invalid base64) just return false
     return false;
   }
@@ -429,23 +429,19 @@ app.post("/api/auth/register", async (c) => {
 
 // Helper to log invalid login attempts without exposing sensitive info
 function logInvalidLoginAttempt(
-  c: any,
+  c: Context<{ Bindings: Env }>,
   reason: string,
   username?: string | null
 ) {
   try {
     // Hono context may wrap headers differently in tests/edge runtimes; accept multiple fallbacks
-    let headers: any = undefined;
-    if (c?.req?.headers?.get) headers = c.req.headers;
-    else if (c?.req?.raw?.headers?.get) headers = c.req.raw.headers;
-    else if (c?.req?.headers) headers = c.req.headers;
+    const headers: Headers | undefined = c.req.raw.headers;
 
     const headerGet = (name: string) => {
       try {
         if (!headers) return undefined;
-        if (typeof headers.get === "function") return headers.get(name);
-        return headers[name] || headers[name.toLowerCase()];
-      } catch (e) {
+        return headers.get(name);
+      } catch (_e) {
         return undefined;
       }
     };

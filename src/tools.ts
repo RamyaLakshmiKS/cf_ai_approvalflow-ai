@@ -30,10 +30,13 @@ export interface Tool {
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   };
-  execute: (params: any, context: ToolContext) => Promise<any>;
+  execute: (
+    params: Record<string, unknown>,
+    context: ToolContext
+  ) => Promise<unknown>;
 }
 
 /**
@@ -49,7 +52,7 @@ const get_current_user: Tool = {
     properties: {},
     required: []
   },
-  execute: async (params: {}, context: ToolContext) => {
+  execute: async (_params: Record<string, unknown>, context: ToolContext) => {
     console.log("[TOOL] get_current_user called for userId:", context.userId);
     const user = await context.env.APP_DB.prepare(
       "SELECT id, username, employee_level, manager_id, hire_date, department, role FROM users WHERE id = ?"
@@ -64,7 +67,7 @@ const get_current_user: Tool = {
 
     console.log(
       "[TOOL] get_current_user - Retrieved user:",
-      (user as any).username
+      (user as { username: string }).username
     );
     return user;
   }
@@ -89,23 +92,20 @@ const search_employee_handbook: Tool = {
     },
     required: ["query"]
   },
-  execute: async (params: { query: string }, context: ToolContext) => {
-    console.log(
-      "[TOOL] search_employee_handbook called with query:",
-      params.query
-    );
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { query } = params as { query: string };
+    console.log("[TOOL] search_employee_handbook called with query:", query);
 
     // Use Workers AI to answer questions from the handbook
-    const prompt = getHandbookSearchPrompt(handbookContent, params.query);
+    const prompt = getHandbookSearchPrompt(handbookContent, query);
 
     const response = (await context.env.AI.run(
-      "@cf/meta/llama-3.1-8b-instruct" as any,
+      "@cf/meta/llama-3.1-8b-instruct" as keyof AiModels,
       {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 500
       }
-    )) as any;
-
+    )) as { response?: string };
     console.log("[TOOL] search_employee_handbook - Got response from AI");
 
     return {
@@ -158,7 +158,8 @@ const get_pto_balance: Tool = {
     }
 
     console.log("[TOOL] get_pto_balance - Retrieved balance:", {
-      current_balance: (ptoBalance as any).current_balance
+      current_balance: (ptoBalance as { current_balance: number })
+        .current_balance
     });
     return ptoBalance;
   }
@@ -186,13 +187,14 @@ const check_blackout_periods: Tool = {
     },
     required: ["start_date", "end_date"]
   },
-  execute: async (
-    params: { start_date: string; end_date: string },
-    context: ToolContext
-  ) => {
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { start_date, end_date } = params as {
+      start_date: string;
+      end_date: string;
+    };
     console.log("[TOOL] check_blackout_periods called for dates:", {
-      start_date: params.start_date,
-      end_date: params.end_date
+      start_date,
+      end_date
     });
 
     const blackouts = await context.env.APP_DB.prepare(
@@ -205,7 +207,7 @@ const check_blackout_periods: Tool = {
         (?2 BETWEEN start_date AND end_date)
       )`
     )
-      .bind(params.start_date, params.end_date)
+      .bind(start_date, end_date)
       .all();
 
     console.log(
@@ -276,7 +278,7 @@ const get_pto_history: Tool = {
       .all();
     console.log(
       "[TOOL] get_pto_history - Retrieved",
-      (history.results as any).length,
+      (history.results as unknown[]).length,
       "records"
     );
     return history.results;
@@ -305,17 +307,18 @@ const calculate_business_days: Tool = {
     },
     required: ["start_date", "end_date"]
   },
-  execute: async (
-    params: { start_date: string; end_date: string },
-    context: ToolContext
-  ) => {
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { start_date, end_date } = params as {
+      start_date: string;
+      end_date: string;
+    };
     console.log("[TOOL] calculate_business_days called for:", {
-      start_date: params.start_date,
-      end_date: params.end_date
+      start_date,
+      end_date
     });
 
-    const startDate = new Date(params.start_date);
-    const endDate = new Date(params.end_date);
+    const startDate = new Date(start_date);
+    const endDate = new Date(end_date);
 
     // Get company holidays in range
     const holidays = await context.env.APP_DB.prepare(
@@ -323,11 +326,11 @@ const calculate_business_days: Tool = {
       WHERE event_type = 'holiday' 
       AND start_date BETWEEN ?1 AND ?2`
     )
-      .bind(params.start_date, params.end_date)
+      .bind(start_date, end_date)
       .all();
 
     const holidaySet = new Set(
-      (holidays.results as any).map((h: any) => h.start_date)
+      (holidays.results as { start_date: string }[]).map((h) => h.start_date)
     );
 
     let businessDays = 0;
@@ -392,19 +395,17 @@ const validate_pto_policy: Tool = {
     },
     required: ["employee_id", "start_date", "end_date"]
   },
-  execute: async (
-    params: {
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { employee_id, start_date, end_date } = params as {
       employee_id: string;
       start_date: string;
       end_date: string;
       reason?: string;
-    },
-    context: ToolContext
-  ) => {
+    };
     console.log("[TOOL] validate_pto_policy called with:", {
-      employee_id: params.employee_id,
-      start_date: params.start_date,
-      end_date: params.end_date
+      employee_id,
+      start_date,
+      end_date
     });
 
     const violations: Array<{ policy: string; message: string }> = [];
@@ -419,38 +420,58 @@ const validate_pto_policy: Tool = {
     if (!employee) {
       console.error(
         "[TOOL] validate_pto_policy - Employee not found:",
-        params.employee_id
+        employee_id
       );
       throw new Error("Employee not found");
     }
 
     // Get balance
-    const balance = await get_pto_balance.execute(
-      { employee_id: params.employee_id },
-      context
-    );
+    const balance = await get_pto_balance.execute({ employee_id }, context);
 
     // Calculate business days
-    const businessDays = await calculate_business_days.execute(
-      { start_date: params.start_date, end_date: params.end_date },
+    const businessDays = (await calculate_business_days.execute(
+      { start_date, end_date },
       context
-    );
+    )) as { business_days: number; weekend_days: number; holidays: string[] };
 
     // Rule 1: Sufficient balance
-    if ((balance as any).current_balance < businessDays.business_days) {
+    if (
+      (balance as { current_balance: number }).current_balance <
+      businessDays.business_days
+    ) {
       violations.push({
         policy: "insufficient_balance",
-        message: `Insufficient PTO balance. You have ${(balance as any).current_balance} days available, but you're requesting ${businessDays.business_days} business days.`
+        message: `Insufficient PTO balance. You have ${(balance as { current_balance: number }).current_balance} days available, but you're requesting ${businessDays.business_days} business days.`
       });
     }
 
     // Rule 2: No blackout conflicts
     const blackouts = await check_blackout_periods.execute(
-      { start_date: params.start_date, end_date: params.end_date },
+      { start_date, end_date },
       context
     );
-    if ((blackouts as any).has_conflict) {
-      const period = (blackouts as any).conflicting_periods[0] as any;
+    if (
+      (
+        blackouts as {
+          has_conflict: boolean;
+          conflicting_periods: {
+            name?: string;
+            start_date: string;
+            end_date: string;
+          }[];
+        }
+      ).has_conflict
+    ) {
+      const period = (
+        blackouts as {
+          has_conflict: boolean;
+          conflicting_periods: {
+            name?: string;
+            start_date: string;
+            end_date: string;
+          }[];
+        }
+      ).conflicting_periods[0];
       violations.push({
         policy: "blackout_conflict",
         message: `Request overlaps with blackout period: ${period.name || "Company blackout"} (${period.start_date} to ${period.end_date})`
@@ -459,7 +480,9 @@ const validate_pto_policy: Tool = {
 
     // Rule 3: Auto-approval threshold
     const autoApprovalLimit =
-      (employee as any).employee_level === "senior" ? 10 : 3;
+      (employee as { employee_level: string }).employee_level === "senior"
+        ? 10
+        : 3;
     const canAutoApprove =
       businessDays.business_days <= autoApprovalLimit &&
       violations.length === 0;
@@ -543,8 +566,17 @@ const submit_pto_request: Tool = {
       "approval_type"
     ]
   },
-  execute: async (
-    params: {
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const {
+      employee_id,
+      start_date,
+      end_date,
+      total_days,
+      reason,
+      status,
+      approval_type,
+      validation_notes
+    } = params as {
       employee_id: string;
       start_date: string;
       end_date: string;
@@ -553,14 +585,12 @@ const submit_pto_request: Tool = {
       status: string;
       approval_type: string;
       validation_notes?: string;
-    },
-    context: ToolContext
-  ) => {
+    };
     const requestId = crypto.randomUUID();
     console.log("[TOOL] submit_pto_request called with:", {
-      employee_id: params.employee_id,
-      total_days: params.total_days,
-      status: params.status
+      employee_id,
+      total_days,
+      status
     });
 
     // Get manager ID
@@ -579,15 +609,15 @@ const submit_pto_request: Tool = {
     )
       .bind(
         requestId,
-        params.employee_id,
-        (employee as any).manager_id,
-        params.start_date,
-        params.end_date,
-        params.total_days,
-        params.reason || "",
-        params.status,
-        params.approval_type,
-        params.validation_notes || ""
+        employee_id,
+        (employee as { manager_id: string }).manager_id,
+        start_date,
+        end_date,
+        total_days,
+        reason || "",
+        status,
+        approval_type,
+        validation_notes || ""
       )
       .run();
 
@@ -599,7 +629,7 @@ const submit_pto_request: Tool = {
       await context.env.APP_DB.prepare(
         "UPDATE pto_balances SET total_used = total_used + ?, current_balance = current_balance - ? WHERE employee_id = ?"
       )
-        .bind(params.total_days, params.total_days, params.employee_id)
+        .bind(total_days, total_days, employee_id)
         .run();
     }
 
@@ -610,9 +640,9 @@ const submit_pto_request: Tool = {
         entity_id: requestId,
         action: "created",
         details: {
-          status: params.status,
-          approval_type: params.approval_type,
-          days_requested: params.total_days
+          status,
+          approval_type,
+          days_requested: total_days
         }
       },
       context
@@ -663,19 +693,17 @@ const log_audit_event: Tool = {
     },
     required: ["entity_type", "entity_id", "action"]
   },
-  execute: async (
-    params: {
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { entity_type, entity_id, action, details } = params as {
       entity_type: string;
       entity_id: string;
       action: string;
-      details?: Record<string, any>;
-    },
-    context: ToolContext
-  ) => {
+      details?: Record<string, unknown>;
+    };
     console.log("[TOOL] log_audit_event:", {
-      entity_type: params.entity_type,
-      entity_id: params.entity_id,
-      action: params.action
+      entity_type,
+      entity_id,
+      action
     });
 
     await context.env.APP_DB.prepare(
@@ -684,12 +712,12 @@ const log_audit_event: Tool = {
     )
       .bind(
         crypto.randomUUID(),
-        params.entity_type,
-        params.entity_id,
-        params.action,
+        entity_type,
+        entity_id,
+        action,
         context.userId,
         "ai_agent",
-        params.details ? JSON.stringify(params.details) : null
+        details ? JSON.stringify(details) : null
       )
       .run();
 
