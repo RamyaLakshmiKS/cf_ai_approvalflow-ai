@@ -77,7 +77,6 @@
   --color-brand-green: #16a34a; /* Tailwind green-600 */
   --color-brand-green-hover: #15803d; /* Tailwind green-700 */
 
-
   /* Base colors */
   --color-ob-base-100: var(--color-white);
   --color-ob-base-200: var(--color-neutral-50);

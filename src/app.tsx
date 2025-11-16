@@ -204,7 +204,9 @@ function ChatInterface() {
                 titleContent: (
                   <div className="flex flex-col gap-1">
                     <p className="font-medium">{user?.username}</p>
-                    <p className="text-sm text-muted-foreground capitalize">{user?.role}</p>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {user?.role}
+                    </p>
                   </div>
                 )
               },
@@ -232,7 +234,7 @@ function ChatInterface() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center">
-                <Card className="p-6 max-w-lg mx-auto bg-neutral-100 dark:bg-neutral-900">
+              <Card className="p-6 max-w-lg mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <Robot size={24} />
@@ -251,7 +253,9 @@ function ChatInterface() {
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>"Submit an expense for $50 for a client lunch"</span>
+                      <span>
+                        "Submit an expense for $50 for a client lunch"
+                      </span>
                     </li>
                   </ul>
                 </div>
