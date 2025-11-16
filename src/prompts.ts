@@ -9,10 +9,14 @@ import { getToolDescriptions } from "./tools";
  */
 export function getSystemPrompt(): string {
   const now = new Date();
-  const currentDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  const currentTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
-  
+  const currentDate = now.toISOString().split("T")[0]; // YYYY-MM-DD
+  const currentTime = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long" });
+
   return `You are ApprovalFlow AI, an intelligent agent that helps employees with PTO requests and expense reimbursements.
 
 ## Current Date and Time
@@ -312,7 +316,10 @@ Now, help the user with their request - but ONLY act on what they actually say!`
 /**
  * Prompt for searching the employee handbook using AI
  */
-export function getHandbookSearchPrompt(handbookContent: string, query: string): string {
+export function getHandbookSearchPrompt(
+  handbookContent: string,
+  query: string
+): string {
   return `You are an expert on the company's employee handbook. A user is asking a question about company policies.
 
 Your task is to answer the user's question based ONLY on the content of the employee handbook provided below. Be specific and cite relevant sections.
@@ -333,10 +340,14 @@ Answer (be concise and specific):`;
  */
 export function getAgentSystemPrompt(): string {
   const now = new Date();
-  const currentDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  const currentTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
-  
+  const currentDate = now.toISOString().split("T")[0]; // YYYY-MM-DD
+  const currentTime = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long" });
+
   return `You are ApprovalFlow AI, an intelligent agent that helps employees with PTO requests and expense reimbursements.
 
 ## Current Date and Time

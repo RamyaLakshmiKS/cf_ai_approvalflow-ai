@@ -82,15 +82,16 @@ export async function runReActAgent(
   console.log("[REACT-AGENT] Starting agent with message:", userMessage);
 
   const steps: ReActStep[] = [];
-  
+
   // Limit conversation history to last 4 messages (2 turns) to prevent context overflow
   const recentHistory = conversationHistory.slice(-4);
-  console.log("[REACT-AGENT] Using", recentHistory.length, "recent messages from history");
-  
-  const messages = [
-    ...recentHistory,
-    { role: "user", content: userMessage }
-  ];
+  console.log(
+    "[REACT-AGENT] Using",
+    recentHistory.length,
+    "recent messages from history"
+  );
+
+  const messages = [...recentHistory, { role: "user", content: userMessage }];
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     console.log("[REACT-AGENT] Iteration", iteration + 1, "of", MAX_ITERATIONS);
@@ -112,32 +113,49 @@ export async function runReActAgent(
     // Parse the response
     const parsed = parseAgentResponse(responseText);
     if (!parsed) {
-      console.warn("[REACT-AGENT] Failed to parse response, checking if it's a direct answer");
-      
+      console.warn(
+        "[REACT-AGENT] Failed to parse response, checking if it's a direct answer"
+      );
+
       // Only allow direct responses for simple greetings
       // Check if user message is a greeting
-      const userGreetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'];
-      const isGreeting = userGreetings.some(greeting => 
-        userMessage.toLowerCase().trim() === greeting || 
-        userMessage.toLowerCase().trim().startsWith(greeting + ' ')
+      const userGreetings = [
+        "hello",
+        "hi",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening"
+      ];
+      const isGreeting = userGreetings.some(
+        (greeting) =>
+          userMessage.toLowerCase().trim() === greeting ||
+          userMessage
+            .toLowerCase()
+            .trim()
+            .startsWith(greeting + " ")
       );
-      
+
       if (isGreeting && responseText.length < 300) {
-        console.log("[REACT-AGENT] User sent greeting, allowing plain text response");
+        console.log(
+          "[REACT-AGENT] User sent greeting, allowing plain text response"
+        );
         return {
           response: responseText.trim(),
           steps
         };
       }
-      
+
       // For non-greetings, this is a genuine error - LLM should have used JSON format
-      console.error("[REACT-AGENT] LLM failed to use required JSON format for non-greeting interaction");
-      
+      console.error(
+        "[REACT-AGENT] LLM failed to use required JSON format for non-greeting interaction"
+      );
+
       // Add the malformed response to context and retry with explicit instruction
       messages.push(
         { role: "assistant", content: responseText },
-        { 
-          role: "user", 
+        {
+          role: "user",
           content: `ERROR: You must respond using the JSON format with action and action_input. Do not respond with plain text except for simple greetings. Please try again using the correct JSON format.`
         }
       );

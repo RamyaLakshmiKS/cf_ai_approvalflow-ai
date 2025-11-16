@@ -113,11 +113,14 @@ export class Chat extends AIChatAgent<Env> {
       onFinish(event);
       return event;
     };
-    
+
     try {
       console.log("[AGENT] Processing chat message");
       console.log("[AGENT] this.messages length:", this.messages.length);
-      console.log("[AGENT] this.messages roles:", this.messages.map(m => m.role));
+      console.log(
+        "[AGENT] this.messages roles:",
+        this.messages.map((m) => m.role)
+      );
 
       // Get the user message (last message in the array)
       const userMessage = this.messages[this.messages.length - 1];
@@ -266,7 +269,8 @@ export class Chat extends AIChatAgent<Env> {
       finishStream(result.response);
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
-      const errorMsg = "I encountered an error processing your request. Please try again.";
+      const errorMsg =
+        "I encountered an error processing your request. Please try again.";
       finishStream(errorMsg);
       await this.saveMessages([
         ...this.messages,
