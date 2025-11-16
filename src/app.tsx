@@ -228,14 +228,7 @@ function ChatInterface() {
               }
             ]}
           >
-            <Button
-              variant="ghost"
-              size="md"
-              shape="square"
-              className="rounded-full h-9 w-9"
-            >
-              <User size={20} />
-            </Button>
+            <User size={20} />
           </DropdownMenu>
         </div>
 

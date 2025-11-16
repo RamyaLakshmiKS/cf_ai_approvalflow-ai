@@ -7,8 +7,6 @@ import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   generateId,
   type StreamTextOnFinishCallback,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
   type ToolSet
 } from "ai";
 import { runReActAgent } from "./react-agent";
@@ -36,116 +34,96 @@ export class Chat extends AIChatAgent<Env> {
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
-  ) {
-    const stream = createUIMessageStream({
-      execute: async ({ writer }) => {
-        try {
-          console.log("[AGENT] Processing chat message for user:", this.userId);
-          
-          // Get the user message
-          const userMessage = this.messages[this.messages.length - 1];
-          if (!userMessage || !userMessage.parts || userMessage.parts.length === 0) {
-            console.warn("[AGENT] Empty user message received");
-            writer.write({
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: "I didn't receive a message. How can I help you?" }]
-                }
-              } as any);
-            onFinish({} as any);
-            return;
-          }
-
-          // Extract text from the message
-          const textPart = userMessage.parts.find((p: any) => p.type === 'text') as any;
-          if (!textPart) {
-            console.warn("[AGENT] No text part found in message");
-            writer.write({
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: "I can only process text messages at this time." }]
-                }
-              } as any);
-            onFinish({} as any);
-            return;
-          }
-
-          console.log("[AGENT] User message:", textPart.text);
-
-          // Check authentication
-          if (!this.userId) {
-            console.error("[AGENT] No userId found in request");
-            writer.write({
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: "Authentication required. Please log in to continue." }]
-                }
-              } as any);
-            onFinish({} as any);
-            return;
-          }
-
-          // Build conversation history
-          const conversationHistory = this.messages.slice(0, -1).map((msg: any) => {
-            const text = msg.parts.find((p: any) => p.type === 'text')?.text || '';
-            return {
-              role: msg.role === 'user' ? 'user' : 'assistant',
-              content: text
-            };
-          });
-
-          console.log("[AGENT] Conversation history length:", conversationHistory.length);
-
-          // Create tool context
-          const toolContext: ToolContext = {
-            env: this.env,
-            userId: this.userId
-          };
-
-          // Run the ReAct agent
-          console.log("[AGENT] Starting ReAct agent");
-          const result = await runReActAgent(
-            textPart.text,
-            conversationHistory,
-            toolContext
-          );
-
-          console.log("[AGENT] ReAct agent completed with", result.steps.length, "steps");
-
-          // Stream the response back
-          writer.write({
-              type: 'ui',
-              props: {
-                role: 'assistant',
-                parts: [{ type: 'text', text: result.response }]
-              }
-            } as any);
-
-          // Log the interaction steps for debugging
-          console.log("[AGENT] ReAct Steps:", JSON.stringify(result.steps, null, 2));
-
-        } catch (error) {
-          console.error("[AGENT] Error in onChatMessage:", error);
-          writer.write({
-              type: 'ui',
-              props: {
-                role: 'assistant',
-                parts: [{ 
-                  type: 'text', 
-                  text: "I apologize, but I encountered an error processing your request. Please try again." 
-                }]
-              }
-            } as any);
-        }
-
+  ): Promise<Response | undefined> {
+    try {
+      console.log("[AGENT] Processing chat message for user:", this.userId);
+      
+      // Get the user message
+      const userMessage = this.messages[this.messages.length - 1];
+      if (!userMessage || !userMessage.parts || userMessage.parts.length === 0) {
+        console.warn("[AGENT] Empty user message received");
         onFinish({} as any);
+        return;
       }
-    });
 
-    return createUIMessageStreamResponse({ stream });
+      // Safety check: only process user messages, not assistant responses
+      if (userMessage.role !== 'user') {
+        console.log("[AGENT] Last message is from", userMessage.role, "- skipping to prevent loops");
+        onFinish({} as any);
+        return;
+      }
+
+      // Extract text from the message
+      const textPart = userMessage.parts.find((p: any) => p.type === 'text') as any;
+      if (!textPart) {
+        console.warn("[AGENT] No text part found in message");
+        onFinish({} as any);
+        return;
+      }
+
+      console.log("[AGENT] User message:", textPart.text);
+
+      // Check authentication
+      if (!this.userId) {
+        console.error("[AGENT] No userId found in request");
+        onFinish({} as any);
+        return;
+      }
+
+      // Build conversation history
+      const conversationHistory = this.messages.slice(0, -1).map((msg: any) => {
+        const text = msg.parts.find((p: any) => p.type === 'text')?.text || '';
+        return {
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: text
+        };
+      });
+
+      console.log("[AGENT] Conversation history length:", conversationHistory.length);
+
+      // Create tool context
+      const toolContext: ToolContext = {
+        env: this.env,
+        userId: this.userId
+      };
+
+      // Run the ReAct agent
+      console.log("[AGENT] Starting ReAct agent");
+      const result = await runReActAgent(
+        textPart.text,
+        conversationHistory,
+        toolContext
+      );
+
+      console.log("[AGENT] ReAct agent completed with", result.steps.length, "steps");
+      console.log("[AGENT] Response text length:", result.response.length);
+      console.log("[AGENT] ReAct Steps:", JSON.stringify(result.steps, null, 2));
+
+      // Save the response message
+      await this.saveMessages([
+        ...this.messages,
+        {
+          id: generateId(),
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: result.response
+            }
+          ],
+          metadata: {
+            createdAt: new Date().toISOString()
+          }
+        }
+      ]);
+
+      console.log("[AGENT] Response saved to message history");
+      onFinish({} as any);
+
+    } catch (error) {
+      console.error("[AGENT] Error in onChatMessage:", error);
+      onFinish({} as any);
+    }
   }
 
   async executeTask(description: string, _task: Schedule<string>) {
@@ -355,13 +333,16 @@ app.post("/api/auth/login", async (c) => {
     const sessionToken = generateSalt(); // Re-using salt generation for a random token
     const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
     const sessionId = crypto.randomUUID();
-    console.log("[AUTH] Creating session for user:", { userId: user.id, sessionId, expiresAt: expires_at.toISOString() });
+    const expiresAtMillis = expires_at.getTime();
+    console.log("[AUTH] Creating session for user:", { userId: user.id, sessionId, expiresAtISO: expires_at.toISOString(), expiresAtMillis, nowMillis: Date.now(), tokenLength: sessionToken.length, tokenFirstChars: sessionToken.substring(0, 10) });
 
     await c.env.APP_DB.prepare(
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)"
     )
-      .bind(sessionId, user.id, sessionToken, expires_at.getTime())
+      .bind(sessionId, user.id, sessionToken, expiresAtMillis)
       .run();
+
+    console.log("[AUTH] Session inserted into database:", { sessionId, tokenLength: sessionToken.length, tokenFirstChars: sessionToken.substring(0, 10) });
 
     setCookie(c, "session_token", sessionToken, {
       httpOnly: true,
@@ -464,29 +445,49 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
       return null;
     }
 
-    const sessionToken = cookieHeader
+    let sessionToken = cookieHeader
       .split(";")
       .find(c => c.trim().startsWith("session_token="))
-      ?.split("=")[1];
+      ?.split("=")[1]
+      ?.trim();
 
     if (!sessionToken) {
-      console.log("[MIDDLEWARE] No session token in cookies");
+      console.log("[MIDDLEWARE] No session token in cookies. Cookies:", cookieHeader);
       return null;
     }
 
-    console.log("[MIDDLEWARE] Found session token, looking up session");
+    // Decode URL-encoded token
+    try {
+      sessionToken = decodeURIComponent(sessionToken);
+    } catch (e) {
+      console.warn("[MIDDLEWARE] Failed to decode token:", e);
+      return null;
+    }
+
+    console.log("[MIDDLEWARE] Found session token, decoded length:", sessionToken.length, "decoded first 10 chars:", sessionToken.substring(0, 10), "looking up session");
 
     // Get session from database
+    console.log("[MIDDLEWARE] Querying database for token (first 10 chars):", sessionToken.substring(0, 10));
     const session = await env.APP_DB.prepare(
       "SELECT user_id, expires_at FROM sessions WHERE token = ?"
     )
       .bind(sessionToken)
       .first<{ user_id: string; expires_at: number }>();
 
-    if (!session || new Date(session.expires_at) < new Date()) {
-      console.warn("[MIDDLEWARE] Session not found or expired");
+    console.log("[MIDDLEWARE] Session lookup result:", { found: !!session, expiresAt: session?.expires_at, now: Date.now(), tokenSearched: sessionToken.substring(0, 10) });
+
+    if (!session) {
+      console.warn("[MIDDLEWARE] Session not found");
       return null;
     }
+
+    // expires_at is stored as milliseconds (Integer), compare directly
+    const sessionExpired = (session.expires_at as number) < Date.now();
+    if (sessionExpired) {
+      console.warn("[MIDDLEWARE] Session expired:", { expiresAt: session.expires_at, now: Date.now() });
+      return null;
+    }
+    console.log("[MIDDLEWARE] Session is valid");
 
     console.log("[MIDDLEWARE] Session found, looking up user:", session.user_id);
 
@@ -550,6 +551,42 @@ app.all("*", async (c) => {
   
   console.log("[ROUTER] Request handled successfully");
   return response;
+});
+
+app.get("/api/debug/sessions", async (c) => {
+  try {
+    const sessions = await c.env.APP_DB.prepare(
+      "SELECT id, user_id, token, expires_at FROM sessions LIMIT 5"
+    )
+      .all<{ id: string; user_id: string; token: string; expires_at: number }>();
+
+    console.log("[DEBUG] Sessions in database:", sessions.results?.length || 0);
+    
+    const sessionData = sessions.results?.map(s => ({
+      id: s.id,
+      user_id: s.user_id,
+      tokenLength: s.token.length,
+      tokenFirstChars: s.token.substring(0, 10),
+      expiresAt: s.expires_at,
+      expiresAtDate: new Date(s.expires_at).toISOString()
+    })) || [];
+
+    return c.json({ sessions: sessionData, now: Date.now(), nowISO: new Date().toISOString() });
+  } catch (error) {
+    console.error("[DEBUG] Error fetching sessions:", error);
+    return c.json({ error: "Failed to fetch sessions" }, 500);
+  }
+});
+
+app.post("/api/debug/clear-sessions", async (c) => {
+  try {
+    const result = await c.env.APP_DB.prepare("DELETE FROM sessions").run();
+    console.log("[DEBUG] Cleared all sessions");
+    return c.json({ deleted: result.meta.changes });
+  } catch (error) {
+    console.error("[DEBUG] Error clearing sessions:", error);
+    return c.json({ error: "Failed to clear sessions" }, 500);
+  }
 });
 
 export default app;
