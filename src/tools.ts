@@ -1,4 +1,5 @@
 import handbookContent from "../docs/employee_handbook.md?raw";
+import { getHandbookSearchPrompt } from "./prompts";
 
 /**
  * Tool Registry for the ReAct Agent
@@ -95,19 +96,7 @@ const search_employee_handbook: Tool = {
     );
 
     // Use Workers AI to answer questions from the handbook
-    const prompt = `You are an expert on the company's employee handbook. A user is asking a question about company policies.
-
-Your task is to answer the user's question based ONLY on the content of the employee handbook provided below. Be specific and cite relevant sections.
-
-If the handbook does not contain information to answer the question, say "The handbook does not contain information about this topic."
-
-Employee Handbook:
-${handbookContent}
-
-User's Question:
-${params.query}
-
-Answer (be concise and specific):`;
+    const prompt = getHandbookSearchPrompt(handbookContent, params.query);
 
     const response = (await context.env.AI.run(
       "@cf/meta/llama-3.1-8b-instruct" as any,
