@@ -103,7 +103,7 @@ function ChatInterface() {
         parts: [{ type: "text", text: message }]
       },
       {
-        body: extraData
+        body: { ...extraData, user }
       }
     );
   };

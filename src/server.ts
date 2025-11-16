@@ -41,50 +41,141 @@ export class Chat extends AIChatAgent<Env> {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        // Clean up incomplete tool calls to prevent API errors
-        const cleanedMessages = cleanupMessages(this.messages);
-
-        // Process any pending tool calls from previous messages
-        // This handles human-in-the-loop confirmations for tools
-        const processedMessages = await processToolCalls({
-          messages: cleanedMessages,
-          dataStream: writer,
-          tools: allTools,
-          executions: {}
-        });
-
         const workersai = createWorkersAI({ binding: this.env.AI });
         const modelName =
           (this.env as unknown as { MODEL?: string }).MODEL || DEFAULT_CF_MODEL;
-        // The provider exposes a constrained model id union type; to avoid
-        // brittle type-level coupling with the provider package we pass the
-        // runtime string and ignore TypeScript here. The runtime model (e.g.
-        // '@cf/meta/llama-2-7b-chat-int8') must be a valid Workers AI model id.
         // @ts-expect-error (modelId is a provider-specific union type; we pass a runtime string)
         const model = workersai(modelName);
 
-        const result = streamText({
-          system: `You are an assistant for an approval workflow application.
-You can help users with tasks related to approvals, such as creating, reviewing, and managing approval requests.
-You can also schedule tasks and reminders.
+        let messages = cleanupMessages(this.messages);
 
-${getSchedulePrompt({ date: new Date() })}
+        for (let i = 0; i < 10; i++) {
+          const result = await streamText({
+            system: `You are ApprovalFlow AI, an intelligent agent that helps employees with PTO requests and expense reimbursements.
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.
+## Your Capabilities
+
+You have access to the following tools:
+${JSON.stringify(allTools, null, 2)}
+
+## How You Work (ReAct Framework)
+
+You operate in a Thought-Action-Observation loop:
+
+1. **THOUGHT**: Analyze the user's request and plan your approach step-by-step.
+   - Break down complex tasks into smaller steps
+   - Identify what information you need
+   - Decide which tools to use
+
+2. **ACTION**: Execute one tool at a time using this format:
+   \`\`\`json
+   {
+     "action": "tool_name",
+     "action_input": {
+       "param1": "value1",
+       "param2": "value2"
+     }
+   }
+   \`\`\`
+
+3. **OBSERVATION**: After each tool call, you'll receive results. Use them to update your thinking.
+
+4. **LOOP**: Continue the cycle until you have all the information needed to provide a final answer.
+
+5. **FINAL ANSWER**: When ready, provide your response using:
+   \`\`\`json
+   {
+     "action": "final_answer",
+     "action_input": {
+       "response": "Your friendly, helpful response to the user"
+     }
+   }
+   \`\`\`
+
+## Policy Information
+
+**IMPORTANT**: Do not use hardcoded policies. Always search the employee handbook using the \`search_employee_handbook\` tool to get current, accurate policy information. The handbook contains the authoritative rules for PTO, expenses, benefits, and all company policies.
+
+## Your Behavior
+
+- Always think step-by-step before acting
+- Use tools to gather accurate, real-time data (don't guess)
+- For any policy questions or validations, first search the employee handbook
+- Validate against policies using the validation tools
+- Be friendly, professional, and concise
+- If a request violates policy, explain why clearly
+- If escalating, explain the reason to both employee and manager
+- Always log audit events for compliance
 `,
+            messages: convertToModelMessages(messages),
+            model,
+          });
 
-          messages: convertToModelMessages(processedMessages),
-          model,
-          tools: allTools,
-          // Type boundary: streamText expects specific tool types, but base class uses ToolSet
-          // This is safe because our tools satisfy ToolSet interface (verified by 'satisfies' in tools.ts)
-          onFinish: onFinish as unknown as StreamTextOnFinishCallback<
-            typeof allTools
-          >,
-          stopWhen: stepCountIs(10)
-        });
+          let fullResponse = "";
+          for await (const delta of result.textStream) {
+            fullResponse += delta;
+          }
 
-        writer.merge(result.toUIMessageStream());
+          const actionRegex = /```json\s*(\{[\s\S]*?\})\s*```/;
+          const match = fullResponse.match(actionRegex);
+
+          if (!match) {
+            writer.write([
+              {
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: "I'm sorry, I'm having trouble understanding. Could you please rephrase?" }]
+                }
+              }
+            ]);
+            break;
+          }
+
+          const jsonAction = JSON.parse(match[1]);
+
+          if (jsonAction.action === 'final_answer') {
+            writer.write([
+              {
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: jsonAction.action_input.response }]
+                }
+              }
+            ]);
+            break;
+          }
+
+          const tool = allTools[jsonAction.action];
+          if (!tool) {
+            writer.write([
+              {
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: `Unknown tool: ${jsonAction.action}` }]
+                }
+              }
+            ]);
+            break;
+          }
+
+          const toolResult = await tool.execute(jsonAction.action_input);
+
+          messages = [
+            ...messages,
+            {
+              role: 'assistant',
+              parts: [{ type: 'text', text: fullResponse }]
+            },
+            {
+              role: 'tool',
+              parts: [{ type: 'tool-result', toolName: jsonAction.action, result: toolResult }]
+            }
+          ];
+        }
+        onFinish({} as any);
       }
     });
 
