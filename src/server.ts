@@ -10,8 +10,6 @@ import {
   type ToolSet,
   type UIMessage,
   type TextUIPart,
-  type ContentPart,
-  type Source,
   type GeneratedFile,
   type TypedToolCall,
   type StaticToolCall,
@@ -22,19 +20,18 @@ import {
   type StepResult,
   type FinishReason,
   type LanguageModelUsage,
-  type ResponseMessage,
   type LanguageModelRequestMetadata
 } from "ai";
 
 function createFinishEvent(responseText: string) {
   const now = new Date();
   const baseStep: StepResult<ToolSet> = {
-    content: [] as ContentPart<ToolSet>[],
+    content: [],
     text: responseText,
     reasoning: [],
     reasoningText: undefined,
     files: [] as GeneratedFile[],
-    sources: [] as Source[],
+    sources: [],
     toolCalls: [] as TypedToolCall<ToolSet>[],
     staticToolCalls: [] as StaticToolCall<ToolSet>[],
     dynamicToolCalls: [] as DynamicToolCall[],
@@ -42,14 +39,14 @@ function createFinishEvent(responseText: string) {
     staticToolResults: [] as StaticToolResult<ToolSet>[],
     dynamicToolResults: [] as DynamicToolResult[],
     finishReason: "stop" as FinishReason,
-    usage: { tokens: 0 },
+    usage: ZERO_USAGE,
     warnings: undefined,
     request: {} as LanguageModelRequestMetadata,
     response: {
       id: generateId(),
       timestamp: now,
       modelId: "approvalflow",
-      messages: [] as ResponseMessage[]
+      messages: []
     },
     providerMetadata: undefined
   };
@@ -57,7 +54,7 @@ function createFinishEvent(responseText: string) {
   return {
     ...baseStep,
     steps: [baseStep],
-    totalUsage: { tokens: 0 }
+    totalUsage: ZERO_USAGE
   } satisfies StepResult<ToolSet> & {
     steps: StepResult<ToolSet>[];
     totalUsage: LanguageModelUsage;
@@ -65,6 +62,12 @@ function createFinishEvent(responseText: string) {
 }
 import { runReActAgent } from "./react-agent";
 import type { ToolContext } from "./tools";
+
+const ZERO_USAGE: LanguageModelUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0
+};
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -94,7 +97,7 @@ export class Chat extends AIChatAgent<Env> {
       console.log("[AGENT] Processing chat message for user:", this.userId);
 
       // Get the user message
-      const userMessage = this.messages.at(-1);
+      const userMessage = this.messages[this.messages.length - 1];
       if (
         !userMessage ||
         !userMessage.parts ||
@@ -116,10 +119,11 @@ export class Chat extends AIChatAgent<Env> {
         return;
       }
 
+      const isTextPart = (part: { type: string }): part is TextUIPart =>
+        part.type === "text";
+
       // Extract text from the message
-      const textPart = userMessage.parts.find(
-        (part): part is TextUIPart => part.type === "text"
-      );
+      const textPart = userMessage.parts.find(isTextPart);
       if (!textPart) {
         console.warn("[AGENT] No text part found in message");
         finishStream("");
@@ -140,9 +144,7 @@ export class Chat extends AIChatAgent<Env> {
         role: UIMessage["role"];
         content: string;
       }> = this.messages.slice(0, -1).map((msg) => {
-        const text =
-          msg.parts.find((part): part is TextUIPart => part.type === "text")
-            ?.text || "";
+        const text = msg.parts.find(isTextPart)?.text || "";
         return {
           role: msg.role === "user" ? "user" : "assistant",
           content: text

@@ -152,9 +152,7 @@ Now, help the user with their request!`;
 /**
  * Parse the LLM response to extract thought and action
  */
-function parseAgentResponse(
-  response: string
-): {
+function parseAgentResponse(response: string): {
   thought: string;
   action: string;
   action_input: Record<string, any>;
