@@ -1099,6 +1099,9 @@ ACTION: final_answer("I'm experiencing technical issues...")
 - [ ] Build policy validation engine
 - [ ] Create tool registry and executor
 - [ ] Test each tool independently
+ - [ ] Create Vectorize index and add ingestion tooling (use `upsert`) and batch ingestion logic
+ - [ ] Validate Wrangler version (>=3.71.0) and ensure ai/vectorize bindings in `wrangler.jsonc`
+ - [ ] Add basic ingest and RAG tests to validate search quality
 
 ### Phase 2: ReAct Loop (Week 2)
 - [ ] Implement Thought-Action-Observation cycle
@@ -1174,6 +1177,134 @@ ACTION: final_answer("I'm experiencing technical issues...")
    - Generate embeddings using `@cf/baai/bge-base-en-v1.5`
    - Insert vectors with metadata (section, category, last_updated)
 
+  ### Caveats & Improvements for Vectorize
+
+  These recommendations ensure robustness and compatibility when setting up Vectorize for the employee handbook.
+
+  - **Wrangler version**: Vectorize V2 requires Wrangler 3.71.0 or later. Use `npx wrangler@latest` or `npx wrangler vectorize` to keep tools up to date before creating indexes.
+  - **Model & Dimensions are fixed**: Set `--dimensions=768` for `@cf/baai/bge-base-en-v1.5`. Confirm model output dimensions by logging the embedding shape for a sample chunk before upserting vectors.
+  - **V2 vs legacy V1**: Do not create legacy Vectorize V1 indexes; they are deprecated. Use V2 and avoid `--deprecated-v1` unless explicitly migrating.
+  - **Use `upsert`, not `insert`**: Use `env.HANDBOOK_VECTORS.upsert([...])` in ingestion scripts so re-run ingestions update vectors safely.
+  - **Batch processing**: For larger handbooks, process chunks in batches (e.g., 100 vectors per batch) to avoid timeouts and throttling. Also, consider adding exponential backoff retries for transient errors.
+  - **Metadata and filtering**: Store useful metadata (`section`, `category`, `last_updated`, `source_id`) and rely on Vectorize filtering to narrow results for policy queries.
+  - **Caching & idempotency**: Store precomputed embeddings in KV or R2 if handbook updates are infrequent; this avoids re-generating embeddings on each run and is easier to re-ingest.
+  - **Observability & Limits**: Vectorize and Workers AI have quotas; monitor index size, query rates, and storage. Track embedding insertion counts and query latencies with Workers Analytics Engine.
+  - **Error handling**: Wrap `AI.run`, `VECTORIZE.upsert` and `query` calls in try/catch. Log failures and retry when appropriate.
+  - **Testing & validation**: Add a post-ingest validation step that runs sample queries and asserts top-K results meet expected scores (cosine ~ 0.8+ for close matches) and that the correct handbook sections are returned.
+
+  ### Example: Batch upsert with error handling
+  ```typescript
+  // In a migration script or setup worker
+  async function populateHandbookVectors(env: Env, chunks: HandbookEntry[]) {
+    const CHUNK_SIZE = 100; // safe batch size
+    const modelName = "@cf/baai/bge-base-en-v1.5"; // 768 dims
+
+    for (let i = 0; i < chunks.length; i += CHUNK_SIZE) {
+      const batch = chunks.slice(i, i + CHUNK_SIZE);
+      try {
+        // Generate embeddings in a single run call: pass an array of strings
+        const inputs = batch.map((b) => b.content);
+        const modelResp = await env.AI.run(modelName, { text: inputs });
+
+        const vectors: VectorizeVector[] = modelResp.data[0].map((vector, idx) => ({
+          id: batch[idx].id,
+          values: vector,
+          metadata: batch[idx].metadata,
+        }));
+
+        // Use upsert to handle new and updated vectors safely
+        const inserted = await env.HANDBOOK_VECTORS.upsert(vectors);
+        console.log(`Inserted batch ${i / CHUNK_SIZE} - ${inserted.count || "ok"}`);
+      } catch (err) {
+        // Basic retry/backoff or log and continue
+        console.error(`Vectorize upsert batch failed: ${err}`);
+        // Optionally retry with backoff or push failed batch to a queue for retry
+      }
+    }
+    // Optionally validate top-K results after ingestion
+  }
+  ```
+
+  ### Validation & Post-Ingest Tests
+  - Add a test route to run sample queries against `env.HANDBOOK_VECTORS.query()` after ingestion.
+  - Assert that top matches return expected `metadata.section` and reasonable `score` thresholds.
+  - Keep a small suite of RAG tests to ensure handbook updates do not break retrieval logic.
+
+  #### Example: Query & assert top match
+  ```typescript
+  async function validateSampleQuery(env: Env, query: string, expectedSection: string) {
+    const queryVector = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: [query] });
+    const matches = await env.HANDBOOK_VECTORS.query(queryVector.data[0], {
+      topK: 3,
+      filter: { category: "pto" }, // narrow scope
+      returnMetadata: true
+    });
+
+    const top = matches.matches?.[0];
+    if (!top) throw new Error("No matches returned");
+    console.assert(top.metadata.section === expectedSection, `Expected ${expectedSection}, got ${top.metadata.section}`);
+    console.log(`Validation passed: found ${top.metadata.section} with score ${top.score}`);
+  }
+  ```
+
+  ### Wrangler & Binding Notes
+  - In `wrangler.jsonc`, include `vectorize` and `ai` bindings and set `compatibility_date` and `compatibility_flags`. For example:
+
+  ```jsonc
+  {
+    "name": "approvalflow-ai",
+    "main": "src/index.ts",
+    "compatibility_date": "2025-02-11",
+    "compatibility_flags": ["nodejs_compat"],
+    "vectorize": [
+      { "binding": "HANDBOOK_VECTORS", "index_name": "handbook-vectors" }
+    ],
+    "ai": { "binding": "AI" },
+    "observability": { "enabled": true, "head_sampling_rate": 1 }
+  }
+  ```
+
+  Note: Don't commit API keys into source; save them as environment variables.
+
+### Additional Implementation Notes (copilot/instructions alignment)
+
+- **TypeScript & module format**: Keep Worker code in TypeScript (ES modules), `src/index.ts` as the default main, and use a single file for the Worker by default. Align with the repo code standards. Avoid native FFI dependencies.
+- **Compatibility & Observability**: Set `compatibility_date = "2025-02-11"` and `compatibility_flags = ["nodejs_compat"]`. Ensure `observability.enabled = true` and `head_sampling_rate` as required by the observability policy.
+- **Use managed bindings only**: Add Vectorize, AI, and Durable Object bindings as needed and follow least privilege approach for these bindings.
+- **Migrations**: When using Agents and Durable Objects, include `migrations[].new_sqlite_classes` in `wrangler.jsonc` for agent state persistence.
+
+### Example: Migrations section for Agents (wrangler.jsonc)
+
+```jsonc
+"migrations": [
+  {
+    "tag": "v1",
+    "new_sqlite_classes": ["AIAgent"]
+  }
+]
+```
+- **Secrets**: Use environment variables for API keys and guard them via Wrangler secrets in production; do not commit secrets to source control.
+- **Scheduled re-ingestion**: Add a scheduled Worker or Queue/Tariff job (Cloudflare Queues or Cron Trigger) to re-ingest changed handbook content, and add an idempotent ingestion process using `upsert`.
+- **Retries and rate-limiting**: Add simple retry logic with exponential backoff for `AI.run` and `VECTORIZE.upsert` to handle transient errors and rate limits.
+
+### CLI & Testing Guidelines
+
+- **Validate Wrangler version**: Run `npx wrangler@latest --version` and `npx wrangler vectorize --help` to validate CLI compatibility.
+- **Basic curl checks**: After deployment, use the following quick checks to validate ingestion and queries.
+
+Insert vectors (POST /insert)
+```bash
+curl -X POST 'https://<your_worker>.workers.dev/insert' \
+  -H 'Content-Type: application/json' \
+  -d '{"chunks": [{"id":"chunk-1","content":"hello world","metadata":{"section":"intro","category":"general","last_updated":"2025-01-01"}}] }'
+```
+
+Query index (GET /?q=...)
+```bash
+curl 'https://<your_worker>.workers.dev/?q=PTO+approval'
+```
+
+
 ### Handbook Data Structure
 
 ```typescript
@@ -1213,8 +1344,9 @@ async function populateHandbookVectors(env: Env) {
       text: chunk.content
     });
     
-    // Insert into Vectorize
-    await env.HANDBOOK_VECTORS.insert([
+    // Upsert into Vectorize (use upsert for idempotent re-ingestions)
+    // For small handbooks a single upsert is fine; for large handbooks use the batch ingestion helper above.
+    await env.HANDBOOK_VECTORS.upsert([
       {
         id: crypto.randomUUID(),
         values: embedding.data[0],
@@ -1254,11 +1386,14 @@ async function populateHandbookVectors(env: Env) {
    - Create vector index for handbook
    - Chunk and embed handbook content
    - Test semantic search functionality
+  - Ensure Wrangler version is >= 3.71.0 and validate `dimensions=768` during index creation
+  - Add a quick validation test to assert top match quality after ingestion
 
 2. **Review this plan** with the team
 3. **Implement tool infrastructure** first (foundational)
 4. **Build ReAct loop** in Durable Object
 5. **Test with sample scenarios** (PTO requests)
+  - Add scheduled re-ingestion & validation tests for handbook updates
 6. **Iterate on prompt engineering** for better reasoning
 7. **Add expense request support** (second use case)
 8. **Deploy and monitor** agentic behavior metrics
