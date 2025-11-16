@@ -74,10 +74,8 @@ const ZERO_USAGE: LanguageModelUsage = {
  * using the ReAct (Reasoning + Acting) framework
  */
 export class Chat extends AIChatAgent<Env> {
-  private userId?: string;
-
   /**
-   * Override fetch to capture user ID from headers
+   * Override fetch to capture user ID from headers and persist it
    */
   async fetch(request: Request) {
     console.log("[CHAT] fetch() called");
@@ -94,8 +92,11 @@ export class Chat extends AIChatAgent<Env> {
       username
     );
 
-    this.userId = userId || undefined;
-    console.log("[CHAT] this.userId set to:", this.userId);
+    // Persist userId in Durable Object storage so it survives across messages
+    if (userId) {
+      await this.ctx.storage.put("userId", userId);
+      console.log("[CHAT] userId persisted to storage:", userId);
+    }
 
     return super.fetch(request);
   }
@@ -107,12 +108,18 @@ export class Chat extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
   ): Promise<Response | undefined> {
-    const finishStream = (text: string) => onFinish(createFinishEvent(text));
+    const finishStream = (text: string) => {
+      const event = createFinishEvent(text);
+      onFinish(event);
+      return event;
+    };
+    
     try {
       console.log("[AGENT] Processing chat message");
-      console.log("[AGENT] this.userId from fetch():", this.userId);
+      console.log("[AGENT] this.messages length:", this.messages.length);
+      console.log("[AGENT] this.messages roles:", this.messages.map(m => m.role));
 
-      // Get the user message
+      // Get the user message (last message in the array)
       const userMessage = this.messages[this.messages.length - 1];
       if (
         !userMessage ||
@@ -120,7 +127,17 @@ export class Chat extends AIChatAgent<Env> {
         userMessage.parts.length === 0
       ) {
         console.warn("[AGENT] Empty user message received");
-        finishStream("");
+        const result = finishStream("");
+        // Save empty assistant message
+        await this.saveMessages([
+          ...this.messages,
+          {
+            id: generateId(),
+            role: "assistant",
+            parts: [{ type: "text", text: "" }],
+            metadata: { createdAt: new Date().toISOString() }
+          }
+        ]);
         return;
       }
 
@@ -136,7 +153,7 @@ export class Chat extends AIChatAgent<Env> {
           "[AGENT] Last 2 messages:",
           this.messages.slice(-2).map((m) => m.role)
         );
-        finishStream("");
+        const result = finishStream("");
         return;
       }
 
@@ -147,31 +164,45 @@ export class Chat extends AIChatAgent<Env> {
       const textPart = userMessage.parts.find(isTextPart);
       if (!textPart) {
         console.warn("[AGENT] No text part found in message");
-        finishStream("");
+        const result = finishStream("");
+        await this.saveMessages([
+          ...this.messages,
+          {
+            id: generateId(),
+            role: "assistant",
+            parts: [{ type: "text", text: "" }],
+            metadata: { createdAt: new Date().toISOString() }
+          }
+        ]);
         return;
       }
 
       console.log("[AGENT] User message:", textPart.text);
 
-      // Try to get userId from multiple sources
-      let userId = this.userId;
-      console.log("[AGENT] Attempting to get userId, current:", userId);
+      // Retrieve userId from Durable Object storage (persisted in fetch())
+      const userId = await this.ctx.storage.get<string>("userId");
+      console.log("[AGENT] Retrieved userId from storage:", userId);
 
-      // If userId not set from fetch(), it might be in the stored context
-      // For Agent/WebSocket connections, we may need to look it up from session
-      // For now, warn if we don't have it
+      // If userId not available, the user needs to refresh
       if (!userId) {
         console.error(
-          "[AGENT] No userId available - check if fetch() was called and headers were passed"
+          "[AGENT] No userId available in storage - user needs to refresh the page"
         );
-        console.warn(
-          "[AGENT] This typically happens when the agent connection doesn't receive X-User-Id header"
-        );
-        finishStream("");
+        const errorMsg = "Authentication required. Please refresh the page.";
+        finishStream(errorMsg);
+        await this.saveMessages([
+          ...this.messages,
+          {
+            id: generateId(),
+            role: "assistant",
+            parts: [{ type: "text", text: errorMsg }],
+            metadata: { createdAt: new Date().toISOString() }
+          }
+        ]);
         return;
       }
 
-      // Build conversation history
+      // Build conversation history (exclude the current user message)
       const conversationHistory: Array<{
         role: UIMessage["role"];
         content: string;
@@ -213,7 +244,7 @@ export class Chat extends AIChatAgent<Env> {
         JSON.stringify(result.steps, null, 2)
       );
 
-      // Save the response message
+      // Save the assistant's response
       await this.saveMessages([
         ...this.messages,
         {
@@ -231,11 +262,21 @@ export class Chat extends AIChatAgent<Env> {
         }
       ]);
 
-      console.log("[AGENT] Response saved to message history");
+      console.log("[AGENT] Response saved and returning to client");
       finishStream(result.response);
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
-      finishStream("");
+      const errorMsg = "I encountered an error processing your request. Please try again.";
+      finishStream(errorMsg);
+      await this.saveMessages([
+        ...this.messages,
+        {
+          id: generateId(),
+          role: "assistant",
+          parts: [{ type: "text", text: errorMsg }],
+          metadata: { createdAt: new Date().toISOString() }
+        }
+      ]);
     }
   }
 
