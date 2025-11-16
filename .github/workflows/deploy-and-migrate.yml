@@ -22,23 +22,23 @@ jobs:
 
       - name: Authenticate to Cloudflare (validate token)
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
         run: |
-          if [ -z "${CF_API_TOKEN}" ]; then
-            echo "CF_API_TOKEN is not set" && exit 1
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "CLOUDFLARE_API_TOKEN (or CF_API_TOKEN fallback) is not set" && exit 1
           fi
-          # `wrangler whoami` will print useful context; if it fails, we still rely on CF_API_TOKEN env for CLI calls
+          # `wrangler whoami` will print useful context; if it fails, we still rely on CLOUDFLARE_API_TOKEN env for CLI calls
           npx wrangler whoami || true
 
       - name: Build and Deploy Worker
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           npm run deploy
 
       - name: Apply D1 migrations to remote
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
         run: |
           # Apply migrations for the binding name configured in wrangler.jsonc (APP_DB)
           npx wrangler d1 migrations apply APP_DB
