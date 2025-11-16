@@ -1157,7 +1157,7 @@ ACTION: final_answer("I'm experiencing technical issues...")
 
 1. **Create Vectorize Index**:
    ```bash
-   npx wrangler vectorize create handbook-vectors --dimensions=768 --metric=cosine
+  npx wrangler vectorize create handbook_vectors --dimensions=768 --metric=cosine
    ```
 
 2. **Configure in wrangler.jsonc**:
@@ -1166,7 +1166,7 @@ ACTION: final_answer("I'm experiencing technical issues...")
      "vectorize": [
        {
          "binding": "HANDBOOK_VECTORS",
-         "index_name": "handbook-vectors"
+        "index_name": "handbook_vectors"
        }
      ]
    }
@@ -1257,7 +1257,7 @@ ACTION: final_answer("I'm experiencing technical issues...")
     "compatibility_date": "2025-02-11",
     "compatibility_flags": ["nodejs_compat"],
     "vectorize": [
-      { "binding": "HANDBOOK_VECTORS", "index_name": "handbook-vectors" }
+      { "binding": "HANDBOOK_VECTORS", "index_name": "handbook_vectors" }
     ],
     "ai": { "binding": "AI" },
     "observability": { "enabled": true, "head_sampling_rate": 1 }

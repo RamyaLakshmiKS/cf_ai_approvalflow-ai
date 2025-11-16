@@ -8,3 +8,9 @@ declare namespace Cloudflare {
 	}
 }
 interface Env extends Cloudflare.Env {}
+
+declare namespace Cloudflare {
+	interface Env {
+		VECTORIZE: VectorizeIndex;
+	}
+}

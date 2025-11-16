@@ -6,12 +6,19 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "approvalflow-ai",
   "main": "src/server.ts",
-  "compatibility_date": "2025-08-03",
+  "compatibility_date": "2025-02-11",
   "compatibility_flags": ["nodejs_compat"],
   "ai": {
     "binding": "AI",
     "remote": true
   },
+    "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "handbook_vectors",
+      "remote": true
+    }
+  ],
   "assets": {
     "directory": "public"
   },
@@ -30,8 +37,10 @@
     }
   ],
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1
   },
+  // Example env vars can be defined here. Use Wrangler secrets in production.
   "d1_databases": [
     {
       "binding": "APP_DB",
