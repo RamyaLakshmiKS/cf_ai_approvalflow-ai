@@ -73,6 +73,9 @@
   --color-blue-800: oklch(0.424 0.199 265.638);
 
   /* Component colors */
+  /* Brand colors */
+  --color-brand-green: #16a34a; /* Tailwind green-600 */
+  --color-brand-green-hover: #15803d; /* Tailwind green-700 */
 
   /* Base colors */
   --color-ob-base-100: var(--color-white);
@@ -211,6 +214,28 @@
   @variant interactive {
     @apply cursor-pointer transition-colors;
   }
+}
+
+/* Brand utility for primary actions */
+.brand-btn {
+  background-color: var(--color-brand-green);
+  color: var(--color-white);
+  border-color: transparent;
+}
+.brand-btn:hover {
+  background-color: var(--color-brand-green-hover);
+}
+
+/* Stronger selector to override .btn.btn-primary specificity */
+.btn.btn-primary.brand-btn,
+.btn.brand-btn.btn-primary {
+  background-color: var(--color-brand-green) !important;
+  color: var(--color-white) !important;
+  border-color: transparent !important;
+}
+.btn.btn-primary.brand-btn:hover,
+.btn.brand-btn.btn-primary:hover {
+  background-color: var(--color-brand-green-hover) !important;
 }
 
 /* Use for elements that require a tab-focus state (most elements) */

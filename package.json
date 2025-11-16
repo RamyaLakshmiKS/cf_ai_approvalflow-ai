@@ -7,6 +7,9 @@
 	"scripts": {
 		"start": "vite dev",
 		"deploy": "vite build && wrangler deploy",
+		"deploy:migrate": "npm run deploy && npm run d1:apply",
+		"d1:apply": "bash ./scripts/d1/apply_migrations.sh",
+		"d1:setup": "bash ./scripts/d1/deploy_and_seed.sh",
 		"test": "vitest",
 		"types": "wrangler types env.d.ts --include-runtime false",
 		"format": "prettier --write .",
@@ -48,6 +51,7 @@
 		"ai": "^5.0.86",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"hono": "^4.10.6",
 		"marked": "^16.4.1",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
