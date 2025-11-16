@@ -21,7 +21,10 @@ export interface Tool {
     properties: Record<string, unknown>;
     required: string[];
   };
-  execute: (params: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+  execute: (
+    params: Record<string, unknown>,
+    context: ToolContext
+  ) => Promise<unknown>;
 }
 
 /**

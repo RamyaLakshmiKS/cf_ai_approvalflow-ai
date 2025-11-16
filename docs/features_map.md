@@ -135,6 +135,7 @@ flowchart TD
    SubmitPending --> UpdateDB
    UpdateDB --> U
 ```
+
 ```
 
 Notes:
@@ -143,3 +144,4 @@ Notes:
 - On escalation the manager reviews via the UI and the request is recorded as `pending` until resolution.
 
 See `docs/ARCHITECTURE.md` for higher-level diagrams and sequencing.
+```

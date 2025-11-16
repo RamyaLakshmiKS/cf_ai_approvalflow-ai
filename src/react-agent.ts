@@ -1,11 +1,12 @@
 /**
- * AI SDK Agent Implementation  
+ * AI SDK Agent Implementation
  *
  * Uses the Vercel AI SDK with Workers AI provider for streaming responses
  * Note: Currently using manual tool execution due to ai-sdk v5 API compatibility
  */
 
 import { streamText } from "ai";
+import type { LanguageModel } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { getSystemPrompt } from "./prompts";
 
@@ -25,19 +26,39 @@ export async function runReActAgent(
   userMessage: string,
   conversationHistory: Array<{ role: string; content: string }>,
   context: ToolContext
-): Promise<{ response: string; steps: Array<{ iteration: number; thought: string; action: string; observation: unknown }> }> {
+): Promise<{
+  response: string;
+  steps: Array<{
+    iteration: number;
+    thought: string;
+    action: string;
+    observation: unknown;
+  }>;
+}> {
   console.log("[AGENT] Starting AI SDK agent with message:", userMessage);
 
-  const steps: Array<{ iteration: number; thought: string; action: string; observation: unknown }> = [];
+  const steps: Array<{
+    iteration: number;
+    thought: string;
+    action: string;
+    observation: unknown;
+  }> = [];
 
   // Create Workers AI instance
   const workersai = createWorkersAI({ binding: context.env.AI });
-  // Use type assertion for the model name since types may not be up to date
-  const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as any);
+  // Use explicit model identifier. Types for the provider's model union are not exported,
+  // so cast the factory to a permissive function type using `unknown` to avoid `any`.
+  const model = (workersai as unknown as (m: string) => LanguageModel)(
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  );
 
   // Limit conversation history to last 4 messages (2 turns)
   const recentHistory = conversationHistory.slice(-4);
-  console.log("[AGENT] Using", recentHistory.length, "recent messages from history");
+  console.log(
+    "[AGENT] Using",
+    recentHistory.length,
+    "recent messages from history"
+  );
 
   // Convert history to AI SDK format
   const messages = recentHistory.map((msg) => ({
@@ -71,16 +92,22 @@ export async function runReActAgent(
       }
     }
 
-    console.log("[AGENT] Agent completed with response length:", fullResponse.length);
+    console.log(
+      "[AGENT] Agent completed with response length:",
+      fullResponse.length
+    );
 
     return {
-      response: fullResponse.trim() || "I apologize, but I wasn't able to generate a proper response. Please try again.",
+      response:
+        fullResponse.trim() ||
+        "I apologize, but I wasn't able to generate a proper response. Please try again.",
       steps
     };
   } catch (error) {
     console.error("[AGENT] Error in runReActAgent:", error);
     return {
-      response: "I encountered an error processing your request. Please try again.",
+      response:
+        "I encountered an error processing your request. Please try again.",
       steps
     };
   }

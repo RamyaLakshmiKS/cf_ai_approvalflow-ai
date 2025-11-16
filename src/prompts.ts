@@ -109,5 +109,27 @@ Great news! Your PTO request for December 20-22 (3 business days) has been appro
 - Keep responses concise but complete
 
 Remember: ALWAYS respond in plain, natural language. Never disclose background tool calls or internal workflow to users. Do not use JSON format or code blocks in your responses to users.
-}`;
+`;
+}
+
+/**
+ * Prompt for searching the employee handbook using AI
+ */
+export function getHandbookSearchPrompt(
+  handbookContent: string,
+  query: string
+): string {
+  return `You are an expert on the company's employee handbook. A user is asking a question about company policies.
+
+Your task is to answer the user's question based ONLY on the content of the employee handbook provided below. Be specific and cite relevant sections.
+
+If the handbook does not contain information to answer the question, say "The handbook does not contain information about this topic."
+
+Employee Handbook:
+${handbookContent}
+
+User's Question:
+${query}
+
+Answer (be concise and specific):`;
 }

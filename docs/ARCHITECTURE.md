@@ -38,6 +38,7 @@ flowchart LR
 ```
 
 Notes:
+
 - `routeAgentRequest` is used to tie incoming HTTP/WebSocket agent traffic to the agent implementation (see `src/server.ts`).
 - The agent persists per-user metadata in Durable Object storage (e.g., userId) and uses D1 for application data.
 
@@ -76,6 +77,7 @@ sequenceDiagram
 ```
 
 Notes:
+
 - Tools that require confirmation are rendered in the UI via `ToolInvocationCard`. The UI sends tool results back to the agent using `addToolResult` / `sendMessage` so the agent can continue.
 
 ---
@@ -87,13 +89,14 @@ flowchart TD
   U[User] -->|"Remind me" / schedule| UI[React UI]
   UI -->|POST schedule request| S[Server / Agent API]
   S -->|agent.schedule / enqueue| Scheduler[Queue / Workflow / Durable Object]
-  Scheduler -->|at scheduled time| Agent[Chat Agent] 
+  Scheduler -->|at scheduled time| Agent[Chat Agent]
   Agent -->|execute| Tools
   Tools --> D1
   Agent --> UI
 ```
 
 Notes:
+
 - The tools and agent code include scheduling and `executeTask` hooks (see `Chat.executeTask` and scheduling notes in README). In production this can map to Cloudflare Queues, Workflows, or Durable Objects that re-invoke the agent at the scheduled time.
 
 ---
