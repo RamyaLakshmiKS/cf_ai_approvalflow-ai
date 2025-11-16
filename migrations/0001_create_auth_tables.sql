@@ -6,6 +6,11 @@ CREATE TABLE users (
   role TEXT DEFAULT 'employee',
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
+  employee_level TEXT DEFAULT 'junior', -- 'junior' or 'senior'
+  manager_id TEXT REFERENCES users(id),
+  hire_date TEXT, -- ISO 8601 date for PTO accrual calculation
+  department TEXT,
+  is_active INTEGER DEFAULT 1, -- Boolean: 1 for active, 0 for inactive
   created_at INTEGER DEFAULT (strftime('%s','now'))
 );
 
