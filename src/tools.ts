@@ -2,12 +2,8 @@ import handbookContent from "../docs/employee_handbook.md?raw";
 import { getHandbookSearchPrompt } from "./prompts";
 
 /**
- * Tool Registry for the ReAct Agent
- * Each tool has:
- * - name: Unique identifier
- * - description: What the tool does (used by LLM for selection)
- * - parameters: JSON Schema for input validation
- * - execute: Async function that performs the action
+ * Tool Registry for Manual Tool Execution
+ * Tools are defined with a custom Tool interface
  */
 
 // Tool execution context interface
@@ -16,15 +12,7 @@ export interface ToolContext {
   userId: string;
 }
 
-// Define tool parameter types
-export interface ToolParameter {
-  name: string;
-  type: string;
-  description: string;
-  required: boolean;
-  enum?: string[];
-}
-
+// Custom Tool type for manual tool execution
 export interface Tool {
   name: string;
   description: string;
