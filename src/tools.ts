@@ -1,173 +1,177 @@
-import { tool, type ToolSet, generateText } from "ai";
-import { z } from "zod/v3";
-import { createWorkersAI } from "workers-ai-provider";
-
-import type { Chat } from "./server";
-import { getCurrentAgent } from "agents";
-import { scheduleSchema } from "agents/schedule";
-// @ts-expect-error - This is a Vite feature to import raw text
 import handbookContent from "../docs/employee_handbook.md?raw";
 
-const scheduleTask = tool({
-  description: "A tool to schedule a task to be executed at a later time",
-  inputSchema: scheduleSchema,
-  execute: async ({ when, description }) => {
-    // we can now read the agent context from the ALS store
-    const { agent } = getCurrentAgent<Chat>();
+/**
+ * Tool Registry for the ReAct Agent
+ * Each tool has:
+ * - name: Unique identifier
+ * - description: What the tool does (used by LLM for selection)
+ * - parameters: JSON Schema for input validation
+ * - execute: Async function that performs the action
+ */
 
-    function throwError(msg: string): string {
-      throw new Error(msg);
-    }
-    if (when.type === "no-schedule") {
-      return "Not a valid schedule input";
-    }
-    const input =
-      when.type === "scheduled"
-        ? when.date // scheduled
-        : when.type === "delayed"
-          ? when.delayInSeconds // delayed
-          : when.type === "cron"
-            ? when.cron // cron
-            : throwError("not a valid schedule input");
-    try {
-      agent!.schedule(input!, "executeTask", description);
-    } catch (error) {
-      console.error("error scheduling task", error);
-      return `Error scheduling task: ${error}`;
-    }
-    return `Task scheduled for type "${when.type}" : ${input}`;
-  }
-});
+// Tool execution context interface
+export interface ToolContext {
+  env: Env;
+  userId: string;
+}
+
+// Define tool parameter types
+export interface ToolParameter {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+  enum?: string[];
+}
+
+export interface Tool {
+  name: string;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, any>;
+    required: string[];
+  };
+  execute: (params: any, context: ToolContext) => Promise<any>;
+}
 
 /**
- * Tool to list all scheduled tasks
- * This executes automatically without requiring human confirmation
+ * Tool 1: Get Current User
+ * Retrieves the authenticated user's profile
  */
-const getScheduledTasks = tool({
-  description: "List all tasks that have been scheduled",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const { agent } = getCurrentAgent<Chat>();
+const get_current_user: Tool = {
+  name: "get_current_user",
+  description: "Retrieves the authenticated user's profile including ID, name, role, employee level, and manager. Use this first to understand who is making the request.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: []
+  },
+  execute: async (params: {}, context: ToolContext) => {
+    const user = await context.env.APP_DB.prepare(
+      "SELECT id, username, employee_level, manager_id, hire_date, department, role FROM users WHERE id = ?"
+    )
+      .bind(context.userId)
+      .first();
 
-    try {
-      const tasks = agent!.getSchedules();
-      if (!tasks || tasks.length === 0) {
-        return "No scheduled tasks found.";
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user;
+  }
+};
+
+/**
+ * Tool 2: Search Employee Handbook
+ * Uses LLM to answer policy questions from the handbook
+ */
+const search_employee_handbook: Tool = {
+  name: "search_employee_handbook",
+  description: "Searches the employee handbook to find relevant policies and rules. Use this for any policy-related questions or validations about PTO, expenses, benefits, blackout periods, auto-approval limits, etc.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Natural language query about company policies (e.g., 'What are the PTO auto-approval limits?', 'What are the blackout periods?', 'What is the expense reimbursement policy?')"
       }
-      return tasks;
-    } catch (error) {
-      console.error("Error listing scheduled tasks", error);
-      return `Error listing scheduled tasks: ${error}`;
-    }
-  }
-});
+    },
+    required: ["query"]
+  },
+  execute: async (params: { query: string }, context: ToolContext) => {
+    // Use Workers AI to answer questions from the handbook
+    const prompt = `You are an expert on the company's employee handbook. A user is asking a question about company policies.
 
-/**
- * Tool to cancel a scheduled task by its ID
- * This executes automatically without requiring human confirmation
- */
-const cancelScheduledTask = tool({
-  description: "Cancel a scheduled task using its ID",
-  inputSchema: z.object({
-    taskId: z.string().describe("The ID of the task to cancel")
-  }),
-  execute: async ({ taskId }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    try {
-      await agent!.cancelSchedule(taskId);
-      return `Task ${taskId} has been successfully canceled.`;
-    } catch (error) {
-      console.error("Error canceling scheduled task", error);
-      return `Error canceling task ${taskId}: ${error}`;
-    }
-  }
-});
+Your task is to answer the user's question based ONLY on the content of the employee handbook provided below. Be specific and cite relevant sections.
 
-const search_employee_handbook = tool({
-  description: "Searches the employee handbook using semantic search to find relevant policies and rules. Use this for any policy-related questions or validations.",
-  inputSchema: z.object({
-    query: z.string().describe("Natural language query about company policies (e.g., 'PTO approval limits', 'expense reimbursement rules', 'blackout periods')")
-  }),
-  execute: async ({ query }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    const workersai = createWorkersAI({ binding: agent!.env.AI });
-    const model = workersai('@cf/meta/llama-3-8b-instruct');
-
-    const { text } = await generateText({
-      model,
-      prompt: `You are an expert on the company's employee handbook. A user is asking a question about the handbook. Your task is to answer the user's question based on the content of the employee handbook provided below.
+If the handbook does not contain information to answer the question, say "The handbook does not contain information about this topic."
 
 Employee Handbook:
 ${handbookContent}
 
 User's Question:
-${query}
+${params.query}
 
-Answer:`,
-    });
+Answer (be concise and specific):`;
 
-    return text;
+    const response = await context.env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, {
+      messages: [
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 500
+    }) as any;
+
+    return {
+      answer: response.response || String(response),
+      source: "Employee Handbook"
+    };
   }
-});
+};
 
-const get_current_user = tool({
-  description: "Retrieves the authenticated user's profile including ID, name, role, employee level, and manager.",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const { agent } = getCurrentAgent<Chat>();
-    // @ts-expect-error - user is not on the type, but we pass it in the body
-    const user = agent.context?.user;
-
-    if (!user) {
-      return "Could not determine the current user. The user may not be logged in.";
-    }
-
-    const dbUser = await agent!.env.APP_DB.prepare(
-      "SELECT id, username, employee_level, manager_id, hire_date, department, role FROM users WHERE id = ?"
-    )
-      .bind(user.id)
-      .first();
-
-    return dbUser;
-  }
-});
-
-const get_pto_balance = tool({
-  description: "Retrieves the employee's current PTO balance, accrued days, used days, and rollover.",
-  inputSchema: z.object({
-    employee_id: z.string().describe("The employee's ID (optional, defaults to current user)").optional()
-  }),
-  execute: async ({ employee_id }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    let userId = employee_id;
-    if (!userId) {
-      // @ts-expect-error - user is not on the type, but we pass it in the body
-      const user = agent.context?.user;
-      if (!user) {
-        return "Could not determine the current user. The user may not be logged in.";
+/**
+ * Tool 3: Get PTO Balance
+ * Retrieves current PTO information for an employee
+ */
+const get_pto_balance: Tool = {
+  name: "get_pto_balance",
+  description: "Retrieves the employee's current PTO balance, accrued days, used days, and rollover information.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "The employee's ID (optional, defaults to current user)"
       }
-      userId = user.id;
-    }
+    },
+    required: []
+  },
+  execute: async (params: { employee_id?: string }, context: ToolContext) => {
+    const userId = params.employee_id || context.userId;
 
-    const ptoBalance = await agent!.env.APP_DB.prepare(
+    const ptoBalance = await context.env.APP_DB.prepare(
       "SELECT current_balance, total_accrued, total_used, rollover_from_previous_year FROM pto_balances WHERE employee_id = ?"
     )
       .bind(userId)
       .first();
 
+    if (!ptoBalance) {
+      return {
+        error: "PTO balance not found for this employee",
+        current_balance: 0,
+        total_accrued: 0,
+        total_used: 0,
+        rollover_from_previous_year: 0
+      };
+    }
+
     return ptoBalance;
   }
-});
+};
 
-const check_blackout_periods = tool({
-  description: "Checks if the requested dates overlap with company blackout periods (fiscal quarter ends, holidays).",
-  inputSchema: z.object({
-    start_date: z.string().describe("Start date in ISO 8601 format (YYYY-MM-DD)"),
-    end_date: z.string().describe("End date in ISO 8601 format (YYYY-MM-DD)")
-  }),
-  execute: async ({ start_date, end_date }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    const blackouts = await agent!.env.APP_DB.prepare(
+/**
+ * Tool 4: Check Blackout Periods
+ * Validates if dates conflict with company blackout periods
+ */
+const check_blackout_periods: Tool = {
+  name: "check_blackout_periods",
+  description: "Checks if the requested dates overlap with company blackout periods (fiscal quarter ends, holidays). Use this to validate PTO requests.",
+  parameters: {
+    type: "object",
+    properties: {
+      start_date: {
+        type: "string",
+        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      end_date: {
+        type: "string",
+        description: "End date in ISO 8601 format (YYYY-MM-DD)"
+      }
+    },
+    required: ["start_date", "end_date"]
+  },
+  execute: async (params: { start_date: string; end_date: string }, context: ToolContext) => {
+    const blackouts = await context.env.APP_DB.prepare(
       `SELECT * FROM company_calendar 
       WHERE event_type = 'blackout' 
       AND (
@@ -176,66 +180,93 @@ const check_blackout_periods = tool({
         (?1 BETWEEN start_date AND end_date) OR
         (?2 BETWEEN start_date AND end_date)
       )`
-    ).bind(start_date, end_date).all();
+    ).bind(params.start_date, params.end_date).all();
 
     return {
       has_conflict: blackouts.results.length > 0,
       conflicting_periods: blackouts.results
     };
   }
-});
+};
 
-const get_pto_history = tool({
+/**
+ * Tool 5: Get PTO History
+ * Retrieves past PTO requests
+ */
+const get_pto_history: Tool = {
+  name: "get_pto_history",
   description: "Retrieves past PTO requests for the employee, including approved, denied, and pending requests.",
-  inputSchema: z.object({
-    employee_id: z.string().optional(),
-    limit: z.number().default(10),
-    status_filter: z.enum(["approved", "denied", "pending", "all"]).optional()
-  }),
-  execute: async ({ employee_id, limit, status_filter }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    let userId = employee_id;
-    if (!userId) {
-      // @ts-expect-error - user is not on the type, but we pass it in the body
-      const user = agent.context?.user;
-      if (!user) {
-        return "Could not determine the current user. The user may not be logged in.";
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "Employee ID (optional, defaults to current user)"
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of records to return (default: 10)"
+      },
+      status_filter: {
+        type: "string",
+        description: "Filter by status: approved, denied, pending, or all",
+        enum: ["approved", "denied", "pending", "all"]
       }
-      userId = user.id;
-    }
+    },
+    required: []
+  },
+  execute: async (params: { employee_id?: string; limit?: number; status_filter?: string }, context: ToolContext) => {
+    const userId = params.employee_id || context.userId;
+    const limit = params.limit || 10;
+    const statusFilter = params.status_filter || "all";
 
     let query = "SELECT * FROM pto_requests WHERE employee_id = ?";
-    const params = [userId];
+    const queryParams: string[] = [userId];
 
-    if (status_filter && status_filter !== "all") {
+    if (statusFilter && statusFilter !== "all") {
       query += " AND status = ?";
-      params.push(status_filter);
+      queryParams.push(statusFilter);
     }
 
     query += " ORDER BY created_at DESC LIMIT ?";
-    params.push(limit.toString());
+    queryParams.push(limit.toString());
 
-    const history = await agent!.env.APP_DB.prepare(query).bind(...params).all();
+    const history = await context.env.APP_DB.prepare(query).bind(...queryParams).all();
     return history.results;
   }
-});
+};
 
-const calculate_business_days = tool({
-  description: "Calculates the number of business days (excluding weekends and holidays) between two dates.",
-  inputSchema: z.object({
-    start_date: z.string(),
-    end_date: z.string()
-  }),
-  execute: async ({ start_date, end_date }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    const startDate = new Date(start_date);
-    const endDate = new Date(end_date);
+/**
+ * Tool 6: Calculate Business Days
+ * Calculates business days excluding weekends and holidays
+ */
+const calculate_business_days: Tool = {
+  name: "calculate_business_days",
+  description: "Calculates the number of business days (excluding weekends and holidays) between two dates. Use this to determine the actual PTO days needed.",
+  parameters: {
+    type: "object",
+    properties: {
+      start_date: {
+        type: "string",
+        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      end_date: {
+        type: "string",
+        description: "End date in ISO 8601 format (YYYY-MM-DD)"
+      }
+    },
+    required: ["start_date", "end_date"]
+  },
+  execute: async (params: { start_date: string; end_date: string }, context: ToolContext) => {
+    const startDate = new Date(params.start_date);
+    const endDate = new Date(params.end_date);
 
-    const holidays = await agent!.env.APP_DB.prepare(
+    // Get company holidays in range
+    const holidays = await context.env.APP_DB.prepare(
       `SELECT start_date FROM company_calendar 
       WHERE event_type = 'holiday' 
       AND start_date BETWEEN ?1 AND ?2`
-    ).bind(start_date, end_date).all();
+    ).bind(params.start_date, params.end_date).all();
 
     const holidaySet = new Set(holidays.results.map((h: any) => h.start_date));
 
@@ -248,56 +279,89 @@ const calculate_business_days = tool({
       const dateStr = current.toISOString().split('T')[0];
 
       if (dayOfWeek === 0 || dayOfWeek === 6) {
+        // Weekend
         weekendDays++;
       } else if (!holidaySet.has(dateStr)) {
+        // Weekday, not a holiday
         businessDays++;
       }
 
       current.setDate(current.getDate() + 1);
     }
 
-    return { business_days: businessDays, weekend_days: weekendDays, holidays: Array.from(holidaySet) };
+    return {
+      business_days: businessDays,
+      weekend_days: weekendDays,
+      holidays: Array.from(holidaySet)
+    };
   }
-});
+};
 
-const validate_pto_policy = tool({
-  description: "Validates a PTO request against all company policies: balance, blackouts, auto-approval limits.",
-  inputSchema: z.object({
-    employee_id: z.string(),
-    start_date: z.string(),
-    end_date: z.string(),
-    reason: z.string().optional()
-  }),
-  execute: async ({ employee_id, start_date, end_date }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    const violations = [];
+/**
+ * Tool 7: Validate PTO Policy
+ * Comprehensive validation against all company policies
+ */
+const validate_pto_policy: Tool = {
+  name: "validate_pto_policy",
+  description: "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "Employee ID"
+      },
+      start_date: {
+        type: "string",
+        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      end_date: {
+        type: "string",
+        description: "End date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      reason: {
+        type: "string",
+        description: "Reason for PTO request (optional)"
+      }
+    },
+    required: ["employee_id", "start_date", "end_date"]
+  },
+  execute: async (params: { employee_id: string; start_date: string; end_date: string; reason?: string }, context: ToolContext) => {
+    const violations: Array<{ policy: string; message: string }> = [];
 
-    const employee = await agent!.env.APP_DB.prepare("SELECT * FROM users WHERE id = ?").bind(employee_id).first();
-    const balanceResult = await get_pto_balance.execute({ employee_id });
-    const balance = balanceResult as { current_balance: number };
+    // Get employee info
+    const employee = await context.env.APP_DB.prepare("SELECT employee_level FROM users WHERE id = ?").bind(params.employee_id).first();
+    
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
 
+    // Get balance
+    const balance = await get_pto_balance.execute({ employee_id: params.employee_id }, context);
+    
+    // Calculate business days
+    const businessDays = await calculate_business_days.execute({ start_date: params.start_date, end_date: params.end_date }, context);
 
-    const businessDaysResult = await calculate_business_days.execute({ start_date, end_date });
-    const businessDays = businessDaysResult as { business_days: number };
-
+    // Rule 1: Sufficient balance
     if (balance.current_balance < businessDays.business_days) {
       violations.push({
         policy: "insufficient_balance",
-        message: `Insufficient PTO. You have ${balance.current_balance} days but need ${businessDays.business_days} days.`
+        message: `Insufficient PTO balance. You have ${balance.current_balance} days available, but you're requesting ${businessDays.business_days} business days.`
       });
     }
 
-    const blackoutsResult = await check_blackout_periods.execute({ start_date, end_date });
-    const blackouts = blackoutsResult as { has_conflict: boolean, conflicting_periods: any[] };
+    // Rule 2: No blackout conflicts
+    const blackouts = await check_blackout_periods.execute({ start_date: params.start_date, end_date: params.end_date }, context);
     if (blackouts.has_conflict) {
+      const period = blackouts.conflicting_periods[0] as any;
       violations.push({
         policy: "blackout_conflict",
-        message: `Request overlaps with blackout period: ${blackouts.conflicting_periods[0].name}`
+        message: `Request overlaps with blackout period: ${period.name || 'Company blackout'} (${period.start_date} to ${period.end_date})`
       });
     }
 
-    // @ts-expect-error
-    const autoApprovalLimit = employee.employee_level === 'senior' ? 10 : 3;
+    // Rule 3: Auto-approval threshold
+    const autoApprovalLimit = (employee as any).employee_level === 'senior' ? 10 : 3;
     const canAutoApprove = businessDays.business_days <= autoApprovalLimit && violations.length === 0;
     const requiresEscalation = businessDays.business_days > autoApprovalLimit && violations.length === 0;
 
@@ -306,6 +370,8 @@ const validate_pto_policy = tool({
       can_auto_approve: canAutoApprove,
       requires_escalation: requiresEscalation,
       violations,
+      business_days_requested: businessDays.business_days,
+      auto_approval_limit: autoApprovalLimit,
       recommendation: canAutoApprove
         ? "AUTO_APPROVE"
         : requiresEscalation
@@ -313,27 +379,72 @@ const validate_pto_policy = tool({
           : "DENY"
     };
   }
-});
+};
 
-const submit_pto_request = tool({
-  description: "Submits a PTO request to the database after validation. Sets status based on auto-approval or escalation.",
-  inputSchema: z.object({
-    employee_id: z.string(),
-    start_date: z.string(),
-    end_date: z.string(),
-    total_days: z.number(),
-    reason: z.string().optional(),
-    status: z.enum(["auto_approved", "pending", "denied"]),
-    approval_type: z.enum(["auto", "manual"]),
-    validation_notes: z.string().optional()
-  }),
-  execute: async (params) => {
-    const { agent } = getCurrentAgent<Chat>();
+/**
+ * Tool 8: Submit PTO Request
+ * Creates a PTO request in the database
+ */
+const submit_pto_request: Tool = {
+  name: "submit_pto_request",
+  description: "Submits a PTO request to the database after validation. Sets status based on auto-approval or escalation. Only use this AFTER validating with validate_pto_policy.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "Employee ID"
+      },
+      start_date: {
+        type: "string",
+        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      end_date: {
+        type: "string",
+        description: "End date in ISO 8601 format (YYYY-MM-DD)"
+      },
+      total_days: {
+        type: "number",
+        description: "Total business days requested"
+      },
+      reason: {
+        type: "string",
+        description: "Reason for PTO request"
+      },
+      status: {
+        type: "string",
+        description: "Status of the request",
+        enum: ["auto_approved", "pending", "denied"]
+      },
+      approval_type: {
+        type: "string",
+        description: "Type of approval",
+        enum: ["auto", "manual"]
+      },
+      validation_notes: {
+        type: "string",
+        description: "Notes from validation process"
+      }
+    },
+    required: ["employee_id", "start_date", "end_date", "total_days", "status", "approval_type"]
+  },
+  execute: async (params: {
+    employee_id: string;
+    start_date: string;
+    end_date: string;
+    total_days: number;
+    reason?: string;
+    status: string;
+    approval_type: string;
+    validation_notes?: string;
+  }, context: ToolContext) => {
     const requestId = crypto.randomUUID();
 
-    const employee = await agent!.env.APP_DB.prepare("SELECT manager_id FROM users WHERE id = ?").bind(params.employee_id).first();
+    // Get manager ID
+    const employee = await context.env.APP_DB.prepare("SELECT manager_id FROM users WHERE id = ?").bind(params.employee_id).first();
 
-    await agent!.env.APP_DB.prepare(
+    // Insert PTO request
+    await context.env.APP_DB.prepare(
       `INSERT INTO pto_requests (
         id, employee_id, manager_id, start_date, end_date,
         total_days, reason, status, approval_type, ai_validation_notes
@@ -341,8 +452,7 @@ const submit_pto_request = tool({
     ).bind(
       requestId,
       params.employee_id,
-      // @ts-expect-error
-      employee.manager_id,
+      (employee as any).manager_id,
       params.start_date,
       params.end_date,
       params.total_days,
@@ -352,11 +462,24 @@ const submit_pto_request = tool({
       params.validation_notes || ''
     ).run();
 
+    // If auto-approved, update balance
     if (params.status === 'auto_approved') {
-      await agent!.env.APP_DB.prepare(
+      await context.env.APP_DB.prepare(
         "UPDATE pto_balances SET total_used = total_used + ?, current_balance = current_balance - ? WHERE employee_id = ?"
       ).bind(params.total_days, params.total_days, params.employee_id).run();
     }
+
+    // Log audit event
+    await log_audit_event.execute({
+      entity_type: "pto_request",
+      entity_id: requestId,
+      action: "created",
+      details: {
+        status: params.status,
+        approval_type: params.approval_type,
+        days_requested: params.total_days
+      }
+    }, context);
 
     return {
       request_id: requestId,
@@ -364,63 +487,79 @@ const submit_pto_request = tool({
       message: "Request submitted successfully"
     };
   }
-});
+};
 
-const log_audit_event = tool({
-  description: "Logs an action to the audit trail for compliance and tracking.",
-  inputSchema: z.object({
-    entity_type: z.string(),
-    entity_id: z.string(),
-    action: z.string(),
-    details: z.record(z.any()).optional()
-  }),
-  execute: async ({ entity_type, entity_id, action, details }) => {
-    const { agent } = getCurrentAgent<Chat>();
-    // @ts-expect-error
-    const user = agent.context?.user;
-    const actor_id = user?.id || null;
-    const actor_type = user ? 'user' : 'ai_agent';
-
-    await agent!.env.APP_DB.prepare(
+/**
+ * Tool 9: Log Audit Event
+ * Records all agent actions for compliance
+ */
+const log_audit_event: Tool = {
+  name: "log_audit_event",
+  description: "Logs an action to the audit trail for compliance and tracking. Use this for all significant actions.",
+  parameters: {
+    type: "object",
+    properties: {
+      entity_type: {
+        type: "string",
+        description: "Type of entity (e.g., 'pto_request', 'expense_request', 'user')"
+      },
+      entity_id: {
+        type: "string",
+        description: "ID of the entity"
+      },
+      action: {
+        type: "string",
+        description: "Action performed (e.g., 'created', 'approved', 'denied', 'updated')"
+      },
+      details: {
+        type: "object",
+        description: "Additional details about the action (optional)"
+      }
+    },
+    required: ["entity_type", "entity_id", "action"]
+  },
+  execute: async (params: { entity_type: string; entity_id: string; action: string; details?: Record<string, any> }, context: ToolContext) => {
+    await context.env.APP_DB.prepare(
       `INSERT INTO audit_log (id, entity_type, entity_id, action, actor_id, actor_type, details)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       crypto.randomUUID(),
-      entity_type,
-      entity_id,
-      action,
-      actor_id,
-      actor_type,
-      details ? JSON.stringify(details) : null
+      params.entity_type,
+      params.entity_id,
+      params.action,
+      context.userId,
+      'ai_agent',
+      params.details ? JSON.stringify(params.details) : null
     ).run();
 
     return { success: true };
   }
-});
-
+};
 
 /**
- * Export all available tools
- * These will be provided to the AI model to describe available capabilities
+ * Tool Registry
+ * Maps tool names to tool implementations
  */
-export const tools = {
-  scheduleTask,
-  getScheduledTasks,
-  cancelScheduledTask,
-  search_employee_handbook,
+export const tools: Record<string, Tool> = {
   get_current_user,
+  search_employee_handbook,
   get_pto_balance,
   check_blackout_periods,
   get_pto_history,
   calculate_business_days,
   validate_pto_policy,
   submit_pto_request,
-  log_audit_event,
-} satisfies ToolSet;
+  log_audit_event
+};
 
 /**
- * Implementation of confirmation-required tools
- * This object contains the actual logic for tools that need human approval
- * Each function here corresponds to a tool above that doesn't have an execute function
+ * Get tool descriptions for LLM
+ * Formats tools as JSON for the system prompt
  */
-export const executions = {};
+export function getToolDescriptions(): string {
+  return Object.values(tools).map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters
+  })).map(t => JSON.stringify(t, null, 2)).join('\n\n');
+}

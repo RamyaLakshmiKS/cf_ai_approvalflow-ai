@@ -3,30 +3,33 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, deleteCookie, setCookie } from "hono/cookie";
 
-import { getSchedulePrompt } from "agents/schedule";
-
 import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   generateId,
-  streamText,
   type StreamTextOnFinishCallback,
-  stepCountIs,
   createUIMessageStream,
-  convertToModelMessages,
   createUIMessageStreamResponse,
   type ToolSet
 } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
-import { processToolCalls, cleanupMessages } from "./utils";
-import { tools } from "./tools";
-
-const DEFAULT_CF_MODEL = "@cf/meta/llama-3.1-8b-instruct";
-// Cloudflare AI Gateway
+import { runReActAgent } from "./react-agent";
+import type { ToolContext } from "./tools";
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
+ * using the ReAct (Reasoning + Acting) framework
  */
 export class Chat extends AIChatAgent<Env> {
+  private userId?: string;
+
+  /**
+   * Override fetch to capture user ID from headers
+   */
+  async fetch(request: Request) {
+    // Extract user ID from headers set by middleware
+    this.userId = request.headers.get('X-User-Id') || undefined;
+    return super.fetch(request);
+  }
+
   /**
    * Handles incoming chat messages and manages the response stream
    */
@@ -34,153 +37,101 @@ export class Chat extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
   ) {
-    // Collect all tools
-    const allTools = {
-      ...tools
-    };
-
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const workersai = createWorkersAI({ binding: this.env.AI });
-        const modelName =
-          (this.env as unknown as { MODEL?: string }).MODEL || DEFAULT_CF_MODEL;
-        // @ts-expect-error (modelId is a provider-specific union type; we pass a runtime string)
-        const model = workersai(modelName);
+        try {
+          // Get the user message
+          const userMessage = this.messages[this.messages.length - 1];
+          if (!userMessage || !userMessage.parts || userMessage.parts.length === 0) {
+            writer.write({
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: "I didn't receive a message. How can I help you?" }]
+                }
+              } as any);
+            onFinish({} as any);
+            return;
+          }
 
-        let messages = cleanupMessages(this.messages);
+          // Extract text from the message
+          const textPart = userMessage.parts.find((p: any) => p.type === 'text') as any;
+          if (!textPart) {
+            writer.write({
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: "I can only process text messages at this time." }]
+                }
+              } as any);
+            onFinish({} as any);
+            return;
+          }
 
-        for (let i = 0; i < 10; i++) {
-          const result = await streamText({
-            system: `You are ApprovalFlow AI, an intelligent agent that helps employees with PTO requests and expense reimbursements.
-
-## Your Capabilities
-
-You have access to the following tools:
-${JSON.stringify(allTools, null, 2)}
-
-## How You Work (ReAct Framework)
-
-You operate in a Thought-Action-Observation loop:
-
-1. **THOUGHT**: Analyze the user's request and plan your approach step-by-step.
-   - Break down complex tasks into smaller steps
-   - Identify what information you need
-   - Decide which tools to use
-
-2. **ACTION**: Execute one tool at a time using this format:
-   \`\`\`json
-   {
-     "action": "tool_name",
-     "action_input": {
-       "param1": "value1",
-       "param2": "value2"
-     }
-   }
-   \`\`\`
-
-3. **OBSERVATION**: After each tool call, you'll receive results. Use them to update your thinking.
-
-4. **LOOP**: Continue the cycle until you have all the information needed to provide a final answer.
-
-5. **FINAL ANSWER**: When ready, provide your response using:
-   \`\`\`json
-   {
-     "action": "final_answer",
-     "action_input": {
-       "response": "Your friendly, helpful response to the user"
-     }
-   }
-   \`\`\`
-
-## Policy Information
-
-**IMPORTANT**: Do not use hardcoded policies. Always search the employee handbook using the \`search_employee_handbook\` tool to get current, accurate policy information. The handbook contains the authoritative rules for PTO, expenses, benefits, and all company policies.
-
-## Your Behavior
-
-- Always think step-by-step before acting
-- Use tools to gather accurate, real-time data (don't guess)
-- For any policy questions or validations, first search the employee handbook
-- Validate against policies using the validation tools
-- Be friendly, professional, and concise
-- If a request violates policy, explain why clearly
-- If escalating, explain the reason to both employee and manager
-- Always log audit events for compliance
-`,
-            messages: convertToModelMessages(messages),
-            model,
+          // Check authentication
+          if (!this.userId) {
+            writer.write({
+                type: 'ui',
+                props: {
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: "Authentication required. Please log in to continue." }]
+                }
+              } as any);
+            onFinish({} as any);
+            return;
+          }          // Build conversation history
+          const conversationHistory = this.messages.slice(0, -1).map((msg: any) => {
+            const text = msg.parts.find((p: any) => p.type === 'text')?.text || '';
+            return {
+              role: msg.role === 'user' ? 'user' : 'assistant',
+              content: text
+            };
           });
 
-          let fullResponse = "";
-          for await (const delta of result.textStream) {
-            fullResponse += delta;
-          }
+          // Create tool context
+          const toolContext: ToolContext = {
+            env: this.env,
+            userId: this.userId
+          };
 
-          const actionRegex = /```json\s*(\{[\s\S]*?\})\s*```/;
-          const match = fullResponse.match(actionRegex);
+          // Run the ReAct agent
+          const result = await runReActAgent(
+            textPart.text,
+            conversationHistory,
+            toolContext
+          );
 
-          if (!match) {
-            writer.write([
-              {
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: "I'm sorry, I'm having trouble understanding. Could you please rephrase?" }]
-                }
+          // Stream the response back
+          writer.write({
+              type: 'ui',
+              props: {
+                role: 'assistant',
+                parts: [{ type: 'text', text: result.response }]
               }
-            ]);
-            break;
-          }
+            } as any);          // Log the interaction steps for debugging
+          console.log("ReAct Agent Steps:", JSON.stringify(result.steps, null, 2));
 
-          const jsonAction = JSON.parse(match[1]);
-
-          if (jsonAction.action === 'final_answer') {
-            writer.write([
-              {
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: jsonAction.action_input.response }]
-                }
+        } catch (error) {
+          console.error("Error in onChatMessage:", error);
+          writer.write({
+              type: 'ui',
+              props: {
+                role: 'assistant',
+                parts: [{ 
+                  type: 'text', 
+                  text: "I apologize, but I encountered an error processing your request. Please try again." 
+                }]
               }
-            ]);
-            break;
-          }
-
-          const tool = allTools[jsonAction.action];
-          if (!tool) {
-            writer.write([
-              {
-                type: 'ui',
-                props: {
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: `Unknown tool: ${jsonAction.action}` }]
-                }
-              }
-            ]);
-            break;
-          }
-
-          const toolResult = await tool.execute(jsonAction.action_input);
-
-          messages = [
-            ...messages,
-            {
-              role: 'assistant',
-              parts: [{ type: 'text', text: fullResponse }]
-            },
-            {
-              role: 'tool',
-              parts: [{ type: 'tool-result', toolName: jsonAction.action, result: toolResult }]
-            }
-          ];
+            } as any);
         }
+
         onFinish({} as any);
       }
     });
 
     return createUIMessageStreamResponse({ stream });
   }
+
   async executeTask(description: string, _task: Schedule<string>) {
     await this.saveMessages([
       ...this.messages,
@@ -206,7 +157,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.use("*", cors());
 
 // Helper functions for password hashing
-async function hashPassword(password: string, salt: string) {
+export async function hashPassword(password: string, salt: string) {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -229,15 +180,48 @@ async function hashPassword(password: string, salt: string) {
   return btoa(String.fromCharCode.apply(null, hashArray));
 }
 
-function generateSalt() {
+export function generateSalt() {
   const array = new Uint8Array(16);
   crypto.getRandomValues(array);
   return btoa(String.fromCharCode.apply(null, Array.from(array)));
 }
 
 async function verifyPassword(password: string, salt: string, hash: string) {
+  // First, verify with the current behavior (salt is used as-is: ascii/base64 string encoded)
   const hashToVerify = await hashPassword(password, salt);
-  return hashToVerify === hash;
+  if (hashToVerify === hash) return true;
+
+  // If that fails, try interpreting 'salt' as a base64-encoded raw salt and use those bytes as the salt.
+  try {
+    const decodedSaltBinaryString = typeof atob === "function" ? atob(salt) : Buffer.from(salt, "base64").toString("binary");
+    const decodedSaltArray = new Uint8Array(Array.from(decodedSaltBinaryString).map((c: any) => c.charCodeAt(0)));
+
+    // Hash using raw salt bytes
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits", "deriveKey"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: decodedSaltArray,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      256
+    );
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    const altHash = btoa(String.fromCharCode.apply(null, hashArray));
+    return altHash === hash;
+  } catch (e) {
+    // If anything goes wrong (atob not available, invalid base64) just return false
+    return false;
+  }
 }
 
 // Auth routes
@@ -277,11 +261,44 @@ app.post("/api/auth/register", async (c) => {
   }
 });
 
+// Helper to log invalid login attempts without exposing sensitive info
+function logInvalidLoginAttempt(c: any, reason: string, username?: string | null) {
+  try {
+    // Hono context may wrap headers differently in tests/edge runtimes; accept multiple fallbacks
+    let headers: any = undefined;
+    if (c?.req?.headers?.get) headers = c.req.headers;
+    else if (c?.req?.raw?.headers?.get) headers = c.req.raw.headers;
+    else if (c?.req?.headers) headers = c.req.headers;
+
+    const headerGet = (name: string) => {
+      try {
+        if (!headers) return undefined;
+        if (typeof headers.get === "function") return headers.get(name);
+        return headers[name] || headers[name.toLowerCase()];
+      } catch (e) {
+        return undefined;
+      }
+    };
+
+    const ip = headerGet("cf-connecting-ip") || headerGet("x-forwarded-for") || headerGet("x-real-ip") || "unknown";
+    const ua = headerGet("user-agent") || "unknown";
+    const timestamp = new Date().toISOString();
+    // Don't log the password or any secrets
+    const usernameDisplay = username ? username : "<unknown>";
+    const logMsg = `[Auth] Invalid login attempt: reason=${reason} username=${usernameDisplay} ip=${ip} ua="${ua}" timestamp=${timestamp}`;
+    console.warn(logMsg);
+  } catch (e) {
+    // Swallow errors from logging to avoid affecting the auth flow
+    console.warn("[Auth] Failed to log invalid login attempt", e);
+  }
+}
+
 app.post("/api/auth/login", async (c) => {
   try {
     const { username, password } = await c.req.json();
 
     if (!username || !password) {
+      logInvalidLoginAttempt(c, "missing_credentials", username || null);
       return c.json({ error: "Username and password are required" }, 400);
     }
 
@@ -292,6 +309,8 @@ app.post("/api/auth/login", async (c) => {
       .first<{ id: string; password_hash: string; salt: string }>();
 
     if (!user) {
+      // Log user not found without revealing password
+      logInvalidLoginAttempt(c, "user_not_found", username);
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
@@ -302,6 +321,8 @@ app.post("/api/auth/login", async (c) => {
     );
 
     if (!passwordIsValid) {
+      // Log invalid password attempts but avoid logging the password itself
+      logInvalidLoginAttempt(c, "invalid_password", username);
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
@@ -397,12 +418,72 @@ app.get("/check-ai-provider", (c) => {
   return c.json({ success: hasAI });
 });
 
+// Middleware to extract user from session for agent requests
+async function getUserFromSession(request: Request, env: Env): Promise<{ id: string; username: string } | null> {
+  try {
+    // Extract session token from cookie header
+    const cookieHeader = request.headers.get("Cookie");
+    if (!cookieHeader) return null;
+
+    const sessionToken = cookieHeader
+      .split(";")
+      .find(c => c.trim().startsWith("session_token="))
+      ?.split("=")[1];
+
+    if (!sessionToken) return null;
+
+    // Get session from database
+    const session = await env.APP_DB.prepare(
+      "SELECT user_id, expires_at FROM sessions WHERE token = ?"
+    )
+      .bind(sessionToken)
+      .first<{ user_id: string; expires_at: number }>();
+
+    if (!session || new Date(session.expires_at) < new Date()) {
+      return null;
+    }
+
+    // Get user
+    const user = await env.APP_DB.prepare(
+      "SELECT id, username FROM users WHERE id = ?"
+    )
+      .bind(session.user_id)
+      .first<{ id: string; username: string }>();
+
+    return user || null;
+  } catch (error) {
+    console.error("Error getting user from session:", error);
+    return null;
+  }
+}
+
 // Fallback route for agent requests
 app.all("*", async (c) => {
-  return (
-    (await routeAgentRequest(c.req.raw, c.env)) ||
-    new Response("Not found", { status: 404 })
-  );
+  // Get user from session
+  const user = await getUserFromSession(c.req.raw, c.env);
+  
+  if (!user) {
+    // For agent routes, require authentication
+    if (c.req.path.includes('/agents/')) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+  }
+
+  // Store user in a custom header that the agent can read
+  const requestWithUser = new Request(c.req.raw.url, {
+    method: c.req.raw.method,
+    headers: new Headers(c.req.raw.headers),
+    body: c.req.raw.body,
+  });
+  
+  if (user) {
+    requestWithUser.headers.set('X-User-Id', user.id);
+    requestWithUser.headers.set('X-Username', user.username);
+  }
+
+  const response = await routeAgentRequest(requestWithUser, c.env);
+
+  return response || new Response("Not found", { status: 404 });
 });
 
 export default app;

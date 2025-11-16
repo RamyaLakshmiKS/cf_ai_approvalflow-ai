@@ -247,18 +247,16 @@ export async function ingestHandbook(env: Env, content?: string) {
 	// Generate embeddings and upsert
 	const vectors = [] as any[];
 	for (const chunk of chunks) {
-		const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
-			text: chunk.content
-		});
+	const embedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
+		text: chunk.content
+	});
 
-		vectors.push({
-			id: chunk.id,
-			values: embedding.data[0],
-			metadata: chunk.metadata
-		});
-	}
-
-	// Upsert to Vectorize in batches
+	vectors.push({
+		id: chunk.id,
+		values: (embedding as any).data[0],
+		metadata: chunk.metadata
+	});
+}	// Upsert to Vectorize in batches
 	const batchSize = 10;
 	for (let i = 0; i < vectors.length; i += batchSize) {
 		const batch = vectors.slice(i, i + batchSize);
