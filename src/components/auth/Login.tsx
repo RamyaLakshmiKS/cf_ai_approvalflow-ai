@@ -55,7 +55,7 @@ export function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="mx-auto w-full max-w-sm space-y-4">
             <div>
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" title={""}>Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -63,13 +63,12 @@ export function Login() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 className="mt-2 rounded-lg px-4 py-3 border border-neutral-200 bg-white dark:bg-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#F48120]/20 w-full"
-                placeholder="your.username"
-              />
+                placeholder="your.username" onValueChange={undefined}              />
             </div>
 
             <div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" title={""}>Password</Label>
                 {!isRegistering && null}
               </div>
               <Input
@@ -79,8 +78,7 @@ export function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="mt-2 rounded-lg px-4 py-3 border border-neutral-200 bg-white dark:bg-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#F48120]/20 w-full"
-                placeholder="••••••••"
-              />
+                placeholder="••••••••" onValueChange={undefined}              />
             </div>
 
             {error && <p className="text-red-600 text-sm text-center">{error}</p>}
