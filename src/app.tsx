@@ -62,6 +62,7 @@ function ChatInterface() {
     }
 
     // Save theme preference to localStorage
+    console.log("[UI] Saving theme to localStorage:", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
 
@@ -72,6 +73,7 @@ function ChatInterface() {
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
+    console.log("[UI] Theme toggled to:", newTheme);
     setTheme(newTheme);
   };
 
@@ -84,6 +86,7 @@ function ChatInterface() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     setAgentInput(e.target.value);
+    console.log("[UI] Input changed, length:", e.target.value.length);
   };
 
   const handleAgentSubmit = async (
@@ -94,6 +97,7 @@ function ChatInterface() {
     if (!agentInput.trim()) return;
 
     const message = agentInput;
+    console.log("[UI] User submitting message:", message);
     setAgentInput("");
 
     // Send message to agent
@@ -106,6 +110,7 @@ function ChatInterface() {
         body: { ...extraData, user }
       }
     );
+    console.log("[UI] Message sent to agent");
   };
 
   const {
@@ -121,6 +126,7 @@ function ChatInterface() {
 
   // Scroll to bottom when messages change
   useEffect(() => {
+    console.log("[UI] Message count:", agentMessages.length);
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
@@ -215,7 +221,10 @@ function ChatInterface() {
                 type: "button",
                 label: "Logout",
                 icon: <SignOut size={16} />,
-                onClick: logout
+                onClick: () => {
+                  console.log("[UI] User logging out:", user?.username);
+                  logout();
+                }
               }
             ]}
           >

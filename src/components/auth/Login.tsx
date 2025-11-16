@@ -19,15 +19,20 @@ export function Login() {
     setRegistrationSuccess(false); // Clear any previous success message
     try {
       if (isRegistering) {
+        console.log("[LOGIN] Attempting registration for:", username);
         await register(username, password);
+        console.log("[LOGIN] Registration successful");
         setRegistrationSuccess(true);
         setIsRegistering(false); // Switch to login form
         setUsername(""); // Clear form
         setPassword(""); // Clear form
       } else {
+        console.log("[LOGIN] Attempting login for:", username);
         await login(username, password);
+        console.log("[LOGIN] Login successful");
       }
     } catch (err) {
+      console.error("[LOGIN] Error:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
     }
   };
@@ -123,6 +128,8 @@ export function Login() {
           <button
             type="button"
             onClick={() => {
+              const mode = isRegistering ? "login" : "registration";
+              console.log("[LOGIN] Switching to", mode, "mode");
               setIsRegistering(!isRegistering);
               setError(null);
               setRegistrationSuccess(false);

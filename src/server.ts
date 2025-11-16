@@ -40,9 +40,12 @@ export class Chat extends AIChatAgent<Env> {
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
         try {
+          console.log("[AGENT] Processing chat message for user:", this.userId);
+          
           // Get the user message
           const userMessage = this.messages[this.messages.length - 1];
           if (!userMessage || !userMessage.parts || userMessage.parts.length === 0) {
+            console.warn("[AGENT] Empty user message received");
             writer.write({
                 type: 'ui',
                 props: {
@@ -57,6 +60,7 @@ export class Chat extends AIChatAgent<Env> {
           // Extract text from the message
           const textPart = userMessage.parts.find((p: any) => p.type === 'text') as any;
           if (!textPart) {
+            console.warn("[AGENT] No text part found in message");
             writer.write({
                 type: 'ui',
                 props: {
@@ -68,8 +72,11 @@ export class Chat extends AIChatAgent<Env> {
             return;
           }
 
+          console.log("[AGENT] User message:", textPart.text);
+
           // Check authentication
           if (!this.userId) {
+            console.error("[AGENT] No userId found in request");
             writer.write({
                 type: 'ui',
                 props: {
@@ -79,7 +86,9 @@ export class Chat extends AIChatAgent<Env> {
               } as any);
             onFinish({} as any);
             return;
-          }          // Build conversation history
+          }
+
+          // Build conversation history
           const conversationHistory = this.messages.slice(0, -1).map((msg: any) => {
             const text = msg.parts.find((p: any) => p.type === 'text')?.text || '';
             return {
@@ -88,6 +97,8 @@ export class Chat extends AIChatAgent<Env> {
             };
           });
 
+          console.log("[AGENT] Conversation history length:", conversationHistory.length);
+
           // Create tool context
           const toolContext: ToolContext = {
             env: this.env,
@@ -95,11 +106,14 @@ export class Chat extends AIChatAgent<Env> {
           };
 
           // Run the ReAct agent
+          console.log("[AGENT] Starting ReAct agent");
           const result = await runReActAgent(
             textPart.text,
             conversationHistory,
             toolContext
           );
+
+          console.log("[AGENT] ReAct agent completed with", result.steps.length, "steps");
 
           // Stream the response back
           writer.write({
@@ -108,11 +122,13 @@ export class Chat extends AIChatAgent<Env> {
                 role: 'assistant',
                 parts: [{ type: 'text', text: result.response }]
               }
-            } as any);          // Log the interaction steps for debugging
-          console.log("ReAct Agent Steps:", JSON.stringify(result.steps, null, 2));
+            } as any);
+
+          // Log the interaction steps for debugging
+          console.log("[AGENT] ReAct Steps:", JSON.stringify(result.steps, null, 2));
 
         } catch (error) {
-          console.error("Error in onChatMessage:", error);
+          console.error("[AGENT] Error in onChatMessage:", error);
           writer.write({
               type: 'ui',
               props: {
@@ -228,12 +244,15 @@ async function verifyPassword(password: string, salt: string, hash: string) {
 app.post("/api/auth/register", async (c) => {
   try {
     const { username, password } = await c.req.json();
+    console.log("[AUTH] Register attempt for username:", username);
 
     if (!username || !password) {
+      console.warn("[AUTH] Register failed - missing credentials");
       return c.json({ error: "Username and password are required" }, 400);
     }
 
     // Check if user already exists
+    console.log("[AUTH] Checking if user already exists:", username);
     const existingUser = await c.env.APP_DB.prepare(
       "SELECT id FROM users WHERE username = ?"
     )
@@ -241,12 +260,14 @@ app.post("/api/auth/register", async (c) => {
       .first();
 
     if (existingUser) {
+      console.warn("[AUTH] Register failed - username already taken:", username);
       return c.json({ error: "Username already taken" }, 409);
     }
 
     const salt = generateSalt();
     const password_hash = await hashPassword(password, salt);
     const id = crypto.randomUUID();
+    console.log("[AUTH] Creating new user:", { id, username });
 
     await c.env.APP_DB.prepare(
       "INSERT INTO users (id, username, password_hash, salt) VALUES (?, ?, ?, ?)"
@@ -254,9 +275,10 @@ app.post("/api/auth/register", async (c) => {
       .bind(id, username, password_hash, salt)
       .run();
 
+    console.log("[AUTH] User registered successfully:", { id, username });
     return c.json({ message: "User registered successfully" }, 201);
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("[AUTH] Registration error:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -296,8 +318,10 @@ function logInvalidLoginAttempt(c: any, reason: string, username?: string | null
 app.post("/api/auth/login", async (c) => {
   try {
     const { username, password } = await c.req.json();
+    console.log("[AUTH] Login attempt for username:", username);
 
     if (!username || !password) {
+      console.warn("[AUTH] Login failed - missing credentials");
       logInvalidLoginAttempt(c, "missing_credentials", username || null);
       return c.json({ error: "Username and password are required" }, 400);
     }
@@ -310,6 +334,7 @@ app.post("/api/auth/login", async (c) => {
 
     if (!user) {
       // Log user not found without revealing password
+      console.warn("[AUTH] Login failed - user not found:", username);
       logInvalidLoginAttempt(c, "user_not_found", username);
       return c.json({ error: "Invalid credentials" }, 401);
     }
@@ -322,6 +347,7 @@ app.post("/api/auth/login", async (c) => {
 
     if (!passwordIsValid) {
       // Log invalid password attempts but avoid logging the password itself
+      console.warn("[AUTH] Login failed - invalid password for user:", username);
       logInvalidLoginAttempt(c, "invalid_password", username);
       return c.json({ error: "Invalid credentials" }, 401);
     }
@@ -329,6 +355,7 @@ app.post("/api/auth/login", async (c) => {
     const sessionToken = generateSalt(); // Re-using salt generation for a random token
     const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
     const sessionId = crypto.randomUUID();
+    console.log("[AUTH] Creating session for user:", { userId: user.id, sessionId, expiresAt: expires_at.toISOString() });
 
     await c.env.APP_DB.prepare(
       "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)"
@@ -343,9 +370,10 @@ app.post("/api/auth/login", async (c) => {
       expires: expires_at
     });
 
+    console.log("[AUTH] Login successful for user:", { userId: user.id, username });
     return c.json({ message: "Logged in successfully" });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("[AUTH] Login error:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -353,18 +381,21 @@ app.post("/api/auth/login", async (c) => {
 app.post("/api/auth/logout", async (c) => {
   try {
     const sessionToken = getCookie(c, "session_token");
+    console.log("[AUTH] Logout attempt");
 
     if (sessionToken) {
+      console.log("[AUTH] Deleting session from database");
       await c.env.APP_DB.prepare("DELETE FROM sessions WHERE token = ?")
         .bind(sessionToken)
         .run();
     }
 
     deleteCookie(c, "session_token");
+    console.log("[AUTH] Logout successful");
 
     return c.json({ message: "Logged out successfully" });
   } catch (error) {
-    console.error("Logout error:", error);
+    console.error("[AUTH] Logout error:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -372,8 +403,10 @@ app.post("/api/auth/logout", async (c) => {
 app.get("/api/auth/me", async (c) => {
   try {
     const sessionToken = getCookie(c, "session_token");
+    console.log("[AUTH] Fetching current user info");
 
     if (!sessionToken) {
+      console.warn("[AUTH] No session token found");
       return c.json({ error: "Not authenticated" }, 401);
     }
 
@@ -385,6 +418,7 @@ app.get("/api/auth/me", async (c) => {
 
     if (!session || new Date(session.expires_at) < new Date()) {
       // Clean up expired cookie
+      console.warn("[AUTH] Invalid or expired session");
       if (session) {
         deleteCookie(c, "session_token");
       }
@@ -398,12 +432,14 @@ app.get("/api/auth/me", async (c) => {
       .first();
 
     if (!user) {
+      console.warn("[AUTH] User not found for session:", session.user_id);
       return c.json({ error: "User not found" }, 404);
     }
 
+    console.log("[AUTH] Current user fetched successfully:", { userId: user.id, username: user.username });
     return c.json(user);
   } catch (error) {
-    console.error("Me error:", error);
+    console.error("[AUTH] Me endpoint error:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -423,14 +459,22 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
   try {
     // Extract session token from cookie header
     const cookieHeader = request.headers.get("Cookie");
-    if (!cookieHeader) return null;
+    if (!cookieHeader) {
+      console.log("[MIDDLEWARE] No cookie header found");
+      return null;
+    }
 
     const sessionToken = cookieHeader
       .split(";")
       .find(c => c.trim().startsWith("session_token="))
       ?.split("=")[1];
 
-    if (!sessionToken) return null;
+    if (!sessionToken) {
+      console.log("[MIDDLEWARE] No session token in cookies");
+      return null;
+    }
+
+    console.log("[MIDDLEWARE] Found session token, looking up session");
 
     // Get session from database
     const session = await env.APP_DB.prepare(
@@ -440,8 +484,11 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
       .first<{ user_id: string; expires_at: number }>();
 
     if (!session || new Date(session.expires_at) < new Date()) {
+      console.warn("[MIDDLEWARE] Session not found or expired");
       return null;
     }
+
+    console.log("[MIDDLEWARE] Session found, looking up user:", session.user_id);
 
     // Get user
     const user = await env.APP_DB.prepare(
@@ -450,23 +497,34 @@ async function getUserFromSession(request: Request, env: Env): Promise<{ id: str
       .bind(session.user_id)
       .first<{ id: string; username: string }>();
 
+    if (user) {
+      console.log("[MIDDLEWARE] User authenticated:", user.username);
+    }
     return user || null;
   } catch (error) {
-    console.error("Error getting user from session:", error);
+    console.error("[MIDDLEWARE] Error getting user from session:", error);
     return null;
   }
 }
 
 // Fallback route for agent requests
 app.all("*", async (c) => {
+  const path = c.req.path;
+  console.log("[ROUTER] Incoming request:", { method: c.req.method, path });
+  
   // Get user from session
   const user = await getUserFromSession(c.req.raw, c.env);
   
   if (!user) {
     // For agent routes, require authentication
-    if (c.req.path.includes('/agents/')) {
+    if (path.includes('/agents/')) {
+      console.warn("[ROUTER] Agent request without authentication for path:", path);
       return c.json({ error: "Authentication required" }, 401);
     }
+  }
+
+  if (user) {
+    console.log("[ROUTER] User authenticated:", user.username);
   }
 
   // Store user in a custom header that the agent can read
@@ -479,11 +537,19 @@ app.all("*", async (c) => {
   if (user) {
     requestWithUser.headers.set('X-User-Id', user.id);
     requestWithUser.headers.set('X-Username', user.username);
+    console.log("[ROUTER] Added user headers to request");
   }
 
+  console.log("[ROUTER] Routing request to agent handler");
   const response = await routeAgentRequest(requestWithUser, c.env);
 
-  return response || new Response("Not found", { status: 404 });
+  if (!response) {
+    console.warn("[ROUTER] No response from agent, returning 404 for path:", path);
+    return new Response("Not found", { status: 404 });
+  }
+  
+  console.log("[ROUTER] Request handled successfully");
+  return response;
 });
 
 export default app;

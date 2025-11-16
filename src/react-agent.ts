@@ -154,27 +154,29 @@ Now, help the user with their request!`;
  */
 function parseAgentResponse(response: string): { thought: string; action: string; action_input: Record<string, any> } | null {
   try {
+    console.log("[REACT-AGENT] Parsing LLM response");
     // Extract JSON from code blocks
     const jsonMatch = response.match(/```json\s*(\{[\s\S]*?\})\s*```/);
     if (!jsonMatch) {
-      console.error("No JSON found in response:", response);
+      console.error("[REACT-AGENT] No JSON found in response:", response);
       return null;
     }
 
     const parsed = JSON.parse(jsonMatch[1]);
     
     if (!parsed.action) {
-      console.error("No action found in parsed response:", parsed);
+      console.error("[REACT-AGENT] No action found in parsed response:", parsed);
       return null;
     }
 
+    console.log("[REACT-AGENT] Successfully parsed action:", parsed.action);
     return {
       thought: parsed.thought || "No thought provided",
       action: parsed.action,
       action_input: parsed.action_input || {}
     };
   } catch (error) {
-    console.error("Error parsing agent response:", error, response);
+    console.error("[REACT-AGENT] Error parsing agent response:", error, response);
     return null;
   }
 }
@@ -187,10 +189,14 @@ export async function runReActAgent(
   conversationHistory: Array<{ role: string; content: string }>,
   context: ToolContext
 ): Promise<{ response: string; steps: ReActStep[] }> {
+  console.log("[REACT-AGENT] Starting agent with message:", userMessage);
+  
   const steps: ReActStep[] = [];
   const messages = [...conversationHistory, { role: "user", content: userMessage }];
   
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    console.log("[REACT-AGENT] Iteration", iteration + 1, "of", MAX_ITERATIONS);
+    
     // Generate next action from LLM
     const llmResponse = await context.env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, {
       messages: [
@@ -202,10 +208,12 @@ export async function runReActAgent(
     }) as any;
 
     const responseText = (llmResponse.response || String(llmResponse)) as string;
+    console.log("[REACT-AGENT] LLM response received, parsing...");
     
     // Parse the response
     const parsed = parseAgentResponse(responseText);
     if (!parsed) {
+      console.warn("[REACT-AGENT] Failed to parse response, providing error");
       // LLM didn't follow format, provide error
       return {
         response: "I apologize, but I'm having trouble processing your request. Could you please rephrase it?",
@@ -214,9 +222,11 @@ export async function runReActAgent(
     }
 
     const { thought, action, action_input } = parsed;
+    console.log("[REACT-AGENT] Parsed action:", action);
 
     // Check if this is the final answer
     if (action === "final_answer") {
+      console.log("[REACT-AGENT] Final answer reached");
       steps.push({
         iteration,
         thought,
@@ -235,6 +245,7 @@ export async function runReActAgent(
     const tool = tools[action];
     if (!tool) {
       const errorMsg = `Unknown tool: ${action}. Available tools: ${Object.keys(tools).join(", ")}`;
+      console.error("[REACT-AGENT] Tool not found:", action);
       steps.push({
         iteration,
         thought,
@@ -253,7 +264,9 @@ export async function runReActAgent(
 
     try {
       // Execute the tool
+      console.log("[REACT-AGENT] Executing tool:", action);
       const observation = await tool.execute(action_input, context);
+      console.log("[REACT-AGENT] Tool execution completed");
       
       steps.push({
         iteration,
@@ -271,6 +284,7 @@ export async function runReActAgent(
 
     } catch (error) {
       const errorMsg = `Tool execution error: ${error instanceof Error ? error.message : String(error)}`;
+      console.error("[REACT-AGENT] Error executing tool:", errorMsg);
       
       steps.push({
         iteration,
@@ -289,6 +303,7 @@ export async function runReActAgent(
   }
 
   // Max iterations reached
+  console.warn("[REACT-AGENT] Max iterations reached without completion");
   return {
     response: "I apologize, but I wasn't able to complete your request within the allowed time. Please try breaking down your request into smaller parts.",
     steps
