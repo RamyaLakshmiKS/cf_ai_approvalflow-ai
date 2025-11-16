@@ -1,0 +1,44 @@
+name: Deploy and Apply D1 Migrations
+
+on:
+  push:
+    branches:
+      - main
+      - add-login-ui
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authenticate to Cloudflare (validate token)
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          if [ -z "${CF_API_TOKEN}" ]; then
+            echo "CF_API_TOKEN is not set" && exit 1
+          fi
+          # `wrangler whoami` will print useful context; if it fails, we still rely on CF_API_TOKEN env for CLI calls
+          npx wrangler whoami || true
+
+      - name: Build and Deploy Worker
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          npm run deploy
+
+      - name: Apply D1 migrations to remote
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          # Apply migrations for the binding name configured in wrangler.jsonc (APP_DB)
+          npx wrangler d1 migrations apply APP_DB
