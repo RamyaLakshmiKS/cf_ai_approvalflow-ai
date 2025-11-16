@@ -17,6 +17,7 @@ import { Toggle } from "@/components/toggle/Toggle";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import { DropdownMenu } from "@/components/dropdown/DropdownMenu";
 
 // Icon imports
 import {
@@ -27,7 +28,8 @@ import {
   Trash,
   PaperPlaneTilt,
   Stop,
-  SignOut
+  SignOut,
+  User
 } from "@phosphor-icons/react";
 
 // List of tools that require human confirmation
@@ -35,7 +37,7 @@ import {
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [];
 
 function ChatInterface() {
-  const { logout } = useAuthContext();
+  const { logout, user } = useAuthContext();
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
@@ -141,7 +143,7 @@ function ChatInterface() {
   return (
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasAIProvider />
-      <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
+      <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-4xl flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
             <svg
@@ -193,22 +195,44 @@ function ChatInterface() {
           >
             <Trash size={20} />
           </Button>
-          <Button
-            variant="ghost"
-            size="md"
-            shape="square"
-            className="rounded-full h-9 w-9"
-            onClick={logout}
+          <DropdownMenu
+            align="end"
+            side="bottom"
+            MenuItems={[
+              {
+                type: "title",
+                titleContent: (
+                  <div className="flex flex-col gap-1">
+                    <p className="font-medium">{user?.username}</p>
+                    <p className="text-sm text-muted-foreground capitalize">{user?.role}</p>
+                  </div>
+                )
+              },
+              { type: "divider" },
+              {
+                type: "button",
+                label: "Logout",
+                icon: <SignOut size={16} />,
+                onClick: logout
+              }
+            ]}
           >
-            <SignOut size={20} />
-          </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              shape="square"
+              className="rounded-full h-9 w-9"
+            >
+              <User size={20} />
+            </Button>
+          </DropdownMenu>
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center">
-              <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
+                <Card className="p-6 max-w-lg mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <Robot size={24} />
