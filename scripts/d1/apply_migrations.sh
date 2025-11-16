@@ -20,9 +20,9 @@ echo "[d1] Applying migrations for database: ${DB_NAME}"
 
 if [ -n "${WRANGLER_ENV-}" ]; then
   echo "[d1] Using Wrangler environment: ${WRANGLER_ENV}"
-  wrangler d1 migrations apply "${DB_NAME}" --env "${WRANGLER_ENV}"
+  wrangler d1 migrations apply "${DB_NAME}" --env "${WRANGLER_ENV}" --remote
 else
-  wrangler d1 migrations apply "${DB_NAME}"
+  wrangler d1 migrations apply "${DB_NAME}" --remote
 fi
 
 echo "[d1] Done."

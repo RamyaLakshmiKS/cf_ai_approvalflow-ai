@@ -23,7 +23,8 @@ echo "[d1] Applying migrations using wrangler (will apply files from ${MIGRATION
 # Use positional argument for database name (wrangler expects: wrangler d1 migrations apply <database>)
 if [ -n "${WRANGLER_ENV:-}" ]; then
   echo "[d1] Using Wrangler environment: ${WRANGLER_ENV}"
-  wrangler d1 migrations apply --remote "${DB_NAME}" --env "${WRANGLER_ENV}" || {
+  wrangler d1 migrations apply --remote 
+  "${DB_NAME}" --env "${WRANGLER_ENV}" || {
     echo "wrangler d1 migrations apply failed. Please check your wrangler version and run 'wrangler d1 migrations --help' for available commands." >&2
     exit 1
   }
