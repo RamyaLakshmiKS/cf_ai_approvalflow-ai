@@ -3,6 +3,7 @@ import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
+import { ExpenseSubmissionUI } from "@/components/expense";
 import { APPROVAL } from "@/shared";
 
 interface ToolResultWithContent {
@@ -42,6 +43,25 @@ export function ToolInvocationCard({
   // addToolResult
 }: ToolInvocationCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const toolName = toolUIPart.type.replace("tool-", "");
+
+  // Render custom UI for expense submission tool
+  if (
+    toolName === "submit_expense_request" &&
+    toolUIPart.state === "input-available"
+  ) {
+    return (
+      <ExpenseSubmissionUI
+        toolCallId={toolCallId}
+        onSubmit={(result) => {
+          onSubmit({
+            toolCallId,
+            result: JSON.stringify(result)
+          });
+        }}
+      />
+    );
+  }
 
   return (
     <Card className="p-4 my-3 w-full max-w-[500px] rounded-md bg-neutral-100 dark:bg-neutral-900 overflow-hidden">

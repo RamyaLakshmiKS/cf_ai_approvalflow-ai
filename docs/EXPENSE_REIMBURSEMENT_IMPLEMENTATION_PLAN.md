@@ -12,6 +12,7 @@
 This document outlines the complete implementation plan for the **Expense Reimbursement** feature in ApprovalFlow AI. The feature is **receipt-first**: employees upload receipts first, the AI agent extracts and parses receipt data (amount, date, merchant, items), verifies the details with the employee, then submits for validation against company policy with auto-approval or escalation.
 
 **Key Components:**
+
 - **Receipt-first workflow**: Upload receipt → AI parses → User confirms → Validation
 - Database schema for receipt storage and extraction results
 - AI-powered OCR for receipt data extraction
@@ -54,27 +55,29 @@ CREATE INDEX idx_receipt_uploads_status ON receipt_uploads(ocr_status);
 #### B. Enhanced `expense_requests` Table
 
 **Current State Analysis:**
+
 - Already has `receipt_url` and `has_receipt` fields
 - Needs fields for AI validation results and auto-approval logic
 
 **Modifications:**
+
 ```sql
 -- Add to migrations/0010_enhance_expense_requests_table.sql
-ALTER TABLE expense_requests ADD COLUMN ai_validation_status TEXT; 
+ALTER TABLE expense_requests ADD COLUMN ai_validation_status TEXT;
   -- 'not_validated', 'validated', 'failed'
 
-ALTER TABLE expense_requests ADD COLUMN ai_validation_notes TEXT; 
+ALTER TABLE expense_requests ADD COLUMN ai_validation_notes TEXT;
   -- JSON string containing validation details
 
-ALTER TABLE expense_requests ADD COLUMN policy_violations TEXT; 
+ALTER TABLE expense_requests ADD COLUMN policy_violations TEXT;
   -- JSON array of violations if any
 
 ALTER TABLE expense_requests ADD COLUMN auto_approved BOOLEAN DEFAULT 0;
 
-ALTER TABLE expense_requests ADD COLUMN escalation_reason TEXT; 
+ALTER TABLE expense_requests ADD COLUMN escalation_reason TEXT;
   -- Reason why escalated to manager
 
-ALTER TABLE expense_requests ADD COLUMN employee_level TEXT; 
+ALTER TABLE expense_requests ADD COLUMN employee_level TEXT;
   -- Copy of employee level at time of submission (for audit)
 
 ALTER TABLE expense_requests ADD COLUMN submission_method TEXT DEFAULT 'manual';
@@ -87,7 +90,7 @@ ALTER TABLE expense_requests ADD COLUMN receipt_validation_errors TEXT;
 CREATE INDEX idx_expense_status_employee ON expense_requests(status, employee_id, created_at DESC);
 ```
 
-#### C. Expense Category & Policy Table 
+#### C. Expense Category & Policy Table
 
 **Update:** Policies are now read directly from the employee handbook using the AI search tool. This eliminates the need for a separate `expense_policies` database table.
 
@@ -107,12 +110,13 @@ CREATE INDEX idx_expense_status_employee ON expense_requests(status, employee_id
 ### 2.1 Complete User Journey (Sequence Diagram)
 
 ```
-Employee Input → Agent Requests Receipt → User Uploads Receipt → AI Parses Receipt → 
-Agent Shows Details & Asks Confirmation → User Confirms → AI Validates Policy → 
+Employee Input → Agent Requests Receipt → User Uploads Receipt → AI Parses Receipt →
+Agent Shows Details & Asks Confirmation → User Confirms → AI Validates Policy →
 Auto-Approve/Escalate → Manager/Notification
 ```
 
 **Key Difference from PTO:** Receipt is the INPUT, not the optional attachment. The workflow is:
+
 1. **Receipt First** - Upload before any validation
 2. **Parse & Verify** - AI extracts data and asks user to confirm
 3. **Policy Check** - After user confirms, check against policies
@@ -121,6 +125,7 @@ Auto-Approve/Escalate → Manager/Notification
 ### 2.2 Step-by-Step Workflow
 
 #### Phase 1: Receipt Capture & Parsing (Receipt-First Approach)
+
 1. **Employee Initiates Request**
    - User sends chat message: _"I need to be reimbursed for a meal"_ or _"I have an expense to submit"_
    - Agent **immediately asks for receipt**: "Let's start by uploading your receipt. Please attach the receipt image or PDF."
@@ -146,9 +151,10 @@ Auto-Approve/Escalate → Manager/Notification
 
 4. **Agent Verification & Confirmation**
    - Agent displays extracted data to user in formatted message:
+
      ```
      ✓ Receipt parsed successfully!
-     
+
      **Merchant:** Michelin Restaurant
      **Date:** November 15, 2025
      **Items:**
@@ -157,14 +163,16 @@ Auto-Approve/Escalate → Manager/Notification
        - Tip: $12.00
      **Total:** $150.00
      **Currency:** USD
-     
+
      Is this information correct? (yes/no)
      ```
+
    - User confirms: "yes" → proceed to Phase 2
    - User says "no" → Ask which field is wrong, allow user to correct specific fields
    - User can manually override extracted values if OCR misread
 
 #### Phase 2: Category & Description (After Receipt Confirmed)
+
 5. **Collect Remaining Details** (now that receipt is verified)
    - Agent asks: "What category best describes this expense?"
    - Options: Meals, Travel, Training, Software, Supplies, Home Office
@@ -173,6 +181,7 @@ Auto-Approve/Escalate → Manager/Notification
    - Agent confirms: "Perfect! Let me validate this against company policy..."
 
 #### Phase 3: Policy Validation
+
 6. **Get Employee Info**
    - Tool: `get_current_user()` → fetch employee level (junior/senior)
    - Load employee's expense history
@@ -192,10 +201,12 @@ Auto-Approve/Escalate → Manager/Notification
    - Returns: `is_valid`, `can_auto_approve`, `violations[]`
 
 #### Phase 4: Decision & Action
+
 9. **Auto-Approval Decision**
+
    ```
    IF (receipt_valid) AND
-      (amount ≤ limit) AND 
+      (amount ≤ limit) AND
       (no violations) THEN
      → AUTO_APPROVE
    ELSE IF (violations exist) THEN
@@ -217,6 +228,7 @@ Auto-Approve/Escalate → Manager/Notification
     - Tool: `log_audit_event()` for compliance
 
 #### Phase 5: Manager Review (If Escalated)
+
 12. **Manager Notification** (if escalated)
     - Notify manager of escalated expense
     - Include: Employee info, extracted receipt data, category, policy violation reasons
@@ -227,7 +239,7 @@ Auto-Approve/Escalate → Manager/Notification
 
 14. **Employee Notification**
     - On approval: _"Your $150 meal expense has been approved!"_
-    - On denial: _"Your expense was denied: reason_"_
+    - On denial: _"Your expense was denied: reason_"\_
 
 ### 2.3 Decision Tree
 
@@ -297,6 +309,7 @@ Auto-Approve/Escalate → Manager/Notification
            │ Escalated: ⏱     │
            └──────────────────┘
 ```
+
         │  │ │  │   OK │          VIOLATION
         │  │ │  │      │              │
         │  │ESCALATE   │          ESCALATE
@@ -311,7 +324,8 @@ Auto-Approve/Escalate → Manager/Notification
                               ┌───────┴────────┐
                               │                │
                           APPROVE          DENY
-```
+
+````
 
 ---
 
@@ -344,13 +358,14 @@ interface ReceiptUploadRequest {
   submitted_amount: number;
   submitted_category: string;
 }
-```
+````
 
 #### Tool: `process_receipt_image`
 
 **Description:** Processes a receipt image/PDF via OCR extraction and validates against the submitted expense.
 
 **Parameters:**
+
 - `file_data`: Base64-encoded file content
 - `file_name`: Original filename
 - `file_type`: MIME type
@@ -360,6 +375,7 @@ interface ReceiptUploadRequest {
 **Execution Steps:**
 
 1. **Optional: Upload to R2 (for large files)**
+
    ```typescript
    // For files > 500KB, store in R2 for audit trail
    if (fileBuffer.byteLength > 500 * 1024) {
@@ -372,6 +388,7 @@ interface ReceiptUploadRequest {
    ```
 
 2. **Create Receipt Record**
+
    ```typescript
    const receiptId = crypto.randomUUID();
    await env.APP_DB.prepare(
@@ -379,33 +396,42 @@ interface ReceiptUploadRequest {
         id, expense_request_id, file_name, file_type, file_size,
         upload_status, ocr_status
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
-   ).bind(receiptId, expenseId, filename, fileType, fileSize, 'processing', 'pending').run();
+   )
+     .bind(
+       receiptId,
+       expenseId,
+       filename,
+       fileType,
+       fileSize,
+       "processing",
+       "pending"
+     )
+     .run();
    ```
 
 3. **Extract Text via Workers AI Vision (Direct Processing)**
+
    ```typescript
    // Convert file to base64 or URL for AI processing
-   const base64Data = Buffer.from(fileBuffer).toString('base64');
-   
-   const ocrResponse = await env.AI.run(
-     '@cf/llava-1.5-7b-gguf',
-     {
-       prompt: `Extract receipt data as JSON: {
+   const base64Data = Buffer.from(fileBuffer).toString("base64");
+
+   const ocrResponse = await env.AI.run("@cf/llava-1.5-7b-gguf", {
+     prompt: `Extract receipt data as JSON: {
          amount: number (total),
          currency: string,
          date: string (YYYY-MM-DD),
          merchant: string,
          items: [{description, amount}]
        }`,
-       image: [{ data: base64Data, type: 'base64' }]
-     }
-   );
+     image: [{ data: base64Data, type: "base64" }]
+   });
    ```
 
 4. **Parse & Validate Extracted Data**
+
    ```typescript
    const extracted = JSON.parse(ocrResponse.response);
-   
+
    // Validate
    const discrepancies = [];
    if (Math.abs(extracted.amount - submitted_amount) > 0.01) {
@@ -413,13 +439,15 @@ interface ReceiptUploadRequest {
        `Amount mismatch: receipt shows $${extracted.amount}, submitted $${submitted_amount}`
      );
    }
-   
+
    // Store results
    await env.APP_DB.prepare(
      `UPDATE receipt_uploads 
       SET extracted_data = ?, ocr_status = ?, upload_status = ?
       WHERE id = ?`
-   ).bind(JSON.stringify(extracted), 'completed', 'processed', receiptId).run();
+   )
+     .bind(JSON.stringify(extracted), "completed", "processed", receiptId)
+     .run();
    ```
 
 5. **Return Result**
@@ -437,6 +465,7 @@ interface ReceiptUploadRequest {
    ```
 
 **MVP Simplification:**
+
 - Skip R2 for files under 500KB
 - Store receipt metadata in D1, not file content
 - Direct OCR processing within Worker request
@@ -446,6 +475,7 @@ interface ReceiptUploadRequest {
 **Purpose:** Comprehensive expense validation against all policies
 
 **Parameters:**
+
 - `employee_id`: Employee making request
 - `amount`: Expense amount
 - `category`: Expense category
@@ -462,7 +492,7 @@ async execute(params, context) {
   const policy = await context.env.APP_DB.prepare(
     "SELECT * FROM expense_policies WHERE category = ?"
   ).bind(params.category).first();
-  
+
   if (!policy) {
     violations.push({
       policy: "invalid_category",
@@ -471,10 +501,10 @@ async execute(params, context) {
   }
 
   // Check auto-approval limit
-  const limit = employee.employee_level === 'senior' 
-    ? policy.auto_approval_limit_senior 
+  const limit = employee.employee_level === 'senior'
+    ? policy.auto_approval_limit_senior
     : policy.auto_approval_limit_junior;
-  
+
   if (params.amount > limit) {
     violations.push({
       policy: "exceeds_auto_approval",
@@ -494,10 +524,10 @@ async execute(params, context) {
   if (params.category === 'meals') {
     // Query today's meal expenses
     const todayMeals = await context.env.APP_DB.prepare(
-      `SELECT SUM(amount) as total FROM expense_requests 
+      `SELECT SUM(amount) as total FROM expense_requests
        WHERE employee_id = ? AND category = ? AND date(created_at) = date('now')`
     ).bind(params.employee_id, 'meals').first();
-    
+
     const dailyLimit = 100; // Config
     if ((todayMeals?.total || 0) + params.amount > dailyLimit) {
       violations.push({
@@ -508,7 +538,7 @@ async execute(params, context) {
   }
 
   const canAutoApprove = violations.length === 0;
-  
+
   return {
     is_valid: violations.length === 0,
     can_auto_approve: canAutoApprove,
@@ -525,6 +555,7 @@ async execute(params, context) {
 **Purpose:** Create expense request with validated status
 
 **Parameters:**
+
 - `employee_id`: Employee ID
 - `category`: Expense category
 - `amount`: Amount in USD
@@ -535,6 +566,7 @@ async execute(params, context) {
 - `validation_notes`: JSON string of validation results
 
 **Result:**
+
 - Returns `{ request_id, status, message }`
 - Updates audit log
 - If auto-approved: sends confirmation message to employee
@@ -581,7 +613,7 @@ export const FileUploadInput: React.FC<FileUploadInputProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     const files = e.dataTransfer.files;
     if (files?.length > 0) {
       await processFile(files[0]);
@@ -609,7 +641,7 @@ export const FileUploadInput: React.FC<FileUploadInputProps> = ({
     }
 
     onFileSelected(file);
-    
+
     // Upload
     if (onUpload) {
       const result = await onUpload(file);
@@ -625,7 +657,7 @@ export const FileUploadInput: React.FC<FileUploadInputProps> = ({
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
-      className={`border-2 border-dashed rounded-lg p-8 text-center 
+      className={`border-2 border-dashed rounded-lg p-8 text-center
         transition-colors cursor-pointer
         ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -638,7 +670,7 @@ export const FileUploadInput: React.FC<FileUploadInputProps> = ({
         disabled={disabled}
         style={{ display: 'none' }}
       />
-      
+
       <button
         onClick={() => inputRef.current?.click()}
         disabled={disabled}
@@ -646,7 +678,7 @@ export const FileUploadInput: React.FC<FileUploadInputProps> = ({
       >
         {isLoading ? 'Uploading...' : 'Choose File or Drag Here'}
       </button>
-      
+
       <p className="text-sm text-gray-500 mt-2">
         Supported: Images (JPG, PNG) or PDF, max {maxSize / 1024 / 1024}MB
       </p>
@@ -692,32 +724,32 @@ export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           {receiptUrl.endsWith('.pdf') ? (
             <FileText size={48} />
           ) : (
-            <img 
-              src={receiptUrl} 
-              alt="Receipt" 
+            <img
+              src={receiptUrl}
+              alt="Receipt"
               className="w-32 h-32 object-cover rounded"
             />
           )}
         </div>
-        
+
         {extractedData && (
           <div className="flex-1">
             <h3 className="font-semibold">Extracted Data</h3>
             <dl className="text-sm">
               <dt className="font-medium">Merchant:</dt>
               <dd>{extractedData.merchant}</dd>
-              
+
               <dt className="font-medium mt-1">Amount:</dt>
               <dd>{extractedData.currency} {extractedData.amount}</dd>
-              
+
               <dt className="font-medium mt-1">Date:</dt>
               <dd>{extractedData.date}</dd>
             </dl>
           </div>
         )}
-        
+
         {onRemove && (
-          <button 
+          <button
             onClick={onRemove}
             className="flex-shrink-0 text-gray-500 hover:text-red-500"
           >
@@ -757,21 +789,21 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSubmit, isLoading })
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
-    
+
     if (!formData.category) errors.category = 'Category is required';
-    if (!formData.amount || parseFloat(formData.amount) <= 0) 
+    if (!formData.amount || parseFloat(formData.amount) <= 0)
       errors.amount = 'Valid amount is required';
     if (!formData.description) errors.description = 'Description is required';
-    if (!formData.receipt_file) 
+    if (!formData.receipt_file)
       errors.receipt_file = 'Receipt is required for all expenses'; // MANDATORY
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     try {
@@ -858,11 +890,11 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSubmit, isLoading })
           maxSize={5 * 1024 * 1024} // 5MB limit
           disabled={isLoading}
         />
-        
+
         {validationErrors.receipt_file && (
           <p className="text-red-600 text-sm mt-2">{validationErrors.receipt_file}</p>
         )}
-        
+
         {formData.receipt_file && (
           <p className="text-sm text-green-600 mt-2">
             ✓ {formData.receipt_file.name} selected ({(formData.receipt_file.size / 1024).toFixed(1)}KB)
@@ -893,29 +925,29 @@ const handleAgentSubmit = async (
   extraData: Record<string, unknown> = {}
 ) => {
   e.preventDefault();
-  
+
   // Check if user is attaching a file for expense submission
   const hasExpenseAttachment = extraData.expense_receipt_file;
-  
+
   if (hasExpenseAttachment) {
     // Encode file to base64 for transmission
     const file = extraData.expense_receipt_file as File;
     const buffer = await file.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-    
+
     const message = `${agentInput}
 [ATTACHMENT: Receipt]
 File: ${file.name}
 Type: ${file.type}
 Size: ${file.size}
 Base64: ${base64.substring(0, 100)}...`;
-    
+
     // Send message with attachment metadata
     await agent.sendMessage({
       content: message,
       metadata: {
         hasAttachment: true,
-        attachmentType: 'receipt',
+        attachmentType: "receipt",
         fileName: file.name,
         fileType: file.type,
         fileBase64: base64
@@ -925,7 +957,7 @@ Base64: ${base64.substring(0, 100)}...`;
     // Regular message without attachment
     await agent.sendMessage(agentInput);
   }
-  
+
   setAgentInput("");
 };
 ```
@@ -981,10 +1013,10 @@ export const ExpenseHistory: React.FC = () => {
                 </span>
               </div>
             </div>
-            
+
             {expense.receipt_url && (
-              <a 
-                href={expense.receipt_url} 
+              <a
+                href={expense.receipt_url}
                 target="_blank"
                 className="text-blue-500 hover:underline text-sm mt-2"
               >
@@ -1009,13 +1041,15 @@ export const ExpenseHistory: React.FC = () => {
 // Tool 10: Get Expense Policies from Employee Handbook
 const get_expense_policies: Tool = {
   name: "get_expense_policies",
-  description: "Retrieves expense policies from the employee handbook, including auto-approval limits, per diem rates, and non-reimbursable items.",
+  description:
+    "Retrieves expense policies from the employee handbook, including auto-approval limits, per diem rates, and non-reimbursable items.",
   parameters: {
     type: "object",
     properties: {
       query: {
         type: "string",
-        description: "Natural language query about expense policy (e.g., 'What is the auto-approval limit for a junior employee?', 'What are non-reimbursable expenses?')"
+        description:
+          "Natural language query about expense policy (e.g., 'What is the auto-approval limit for a junior employee?', 'What are non-reimbursable expenses?')"
       }
     },
     required: ["query"]
@@ -1036,48 +1070,73 @@ const get_expense_policies: Tool = {
 const get_expense_history: Tool = {
   name: "get_expense_history",
   description: "Retrieves past expense requests for the employee.",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 
 // Tool 12: Validate Expense Policy
 const validate_expense_policy: Tool = {
   name: "validate_expense_policy",
-  description: "Validates an expense against company policies from the employee handbook and auto-approval limits.",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  description:
+    "Validates an expense against company policies from the employee handbook and auto-approval limits.",
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 
 // Tool 13: Process Receipt OCR
 const process_receipt_ocr: Tool = {
   name: "process_receipt_ocr",
   description: "Uploads receipt image and extracts data via OCR.",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 
 // Tool 14: Submit Expense Request
 const submit_expense_request: Tool = {
   name: "submit_expense_request",
   description: "Creates an expense request with auto-approval or escalation.",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 
 // Tool 15: Approve Expense Request (Manager Only)
 const approve_expense_request: Tool = {
   name: "approve_expense_request",
   description: "Approves a pending expense request (requires manager role).",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 
 // Tool 16: Deny Expense Request (Manager Only)
 const deny_expense_request: Tool = {
   name: "deny_expense_request",
   description: "Denies a pending expense request with reason.",
-  parameters: { /* ... */ },
-  execute: async (params, context) => { /* ... */ }
+  parameters: {
+    /* ... */
+  },
+  execute: async (params, context) => {
+    /* ... */
+  }
 };
 ```
 
@@ -1101,6 +1160,7 @@ export const tools: Record<string, Tool> = {
 ## 6. Implementation Roadmap
 
 ### Phase 1: Core Infrastructure (Week 1)
+
 - [ ] Create database migrations (receipt_uploads, expense_requests enhancements)
 - [ ] Implement receipt processing endpoint (direct, in-memory)
 - [ ] Basic file validation (size, type)
@@ -1108,6 +1168,7 @@ export const tools: Record<string, Tool> = {
 - [ ] Integration with existing `search_employee_handbook` tool
 
 ### Phase 2: Tools & Validation (Week 2)
+
 - [ ] Implement `process_receipt_ocr` tool
 - [ ] Implement `validate_expense_policy` tool (uses handbook search)
 - [ ] Implement `get_expense_policies` tool (wrapper around handbook search)
@@ -1115,12 +1176,14 @@ export const tools: Record<string, Tool> = {
 - [ ] Test policy queries against handbook
 
 ### Phase 3: Agent Integration (Week 3)
+
 - [ ] Integrate new tools into agent prompt
 - [ ] Update `react-agent.ts` to handle expense workflows
 - [ ] Test end-to-end expense submission via chat
 - [ ] Add manager tools (approve/deny)
 
 ### Phase 4: UI Components (Week 4)
+
 - [ ] Build `FileUploadInput` component
 - [ ] Build `ReceiptPreview` component
 - [ ] Build `ExpenseForm` component
@@ -1128,12 +1191,14 @@ export const tools: Record<string, Tool> = {
 - [ ] Integrate file upload into chat interface
 
 ### Phase 5: Manager Dashboard (Week 5)
+
 - [ ] Create manager dashboard view
 - [ ] Display pending expense escalations
 - [ ] Implement approval/denial UI
 - [ ] Add email notifications
 
 ### Phase 6: Testing & Polish (Week 6)
+
 - [ ] Integration tests for full workflow
 - [ ] OCR accuracy testing with sample receipts
 - [ ] UI/UX refinements
@@ -1172,16 +1237,16 @@ export const tools: Record<string, Tool> = {
 
 ### 8.1 Common Error Scenarios
 
-| Scenario | Handling |
-|----------|----------|
-| Receipt missing | Deny immediately - receipt is mandatory |
-| File upload fails | Retry with exponential backoff; inform user, request re-upload |
-| OCR extraction fails | Display error; ask user to resubmit receipt (may be blurry/damaged) |
-| Ambiguous amount (e.g., multiple totals) | Escalate to manager; highlight ambiguity |
-| Receipt doesn't match submitted amount | Flag as warning; escalate to manager for verification |
-| Employee exceeds category annual limit | Deny with reason; suggest splitting across fiscal year |
-| Receipt date is very old (> 90 days) | Flag warning but escalate to manager for approval |
-| Duplicate expense (same receipt hash, amount, date) | Check and deny; suggest reviewing recent submissions |
+| Scenario                                            | Handling                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------- |
+| Receipt missing                                     | Deny immediately - receipt is mandatory                             |
+| File upload fails                                   | Retry with exponential backoff; inform user, request re-upload      |
+| OCR extraction fails                                | Display error; ask user to resubmit receipt (may be blurry/damaged) |
+| Ambiguous amount (e.g., multiple totals)            | Escalate to manager; highlight ambiguity                            |
+| Receipt doesn't match submitted amount              | Flag as warning; escalate to manager for verification               |
+| Employee exceeds category annual limit              | Deny with reason; suggest splitting across fiscal year              |
+| Receipt date is very old (> 90 days)                | Flag warning but escalate to manager for approval                   |
+| Duplicate expense (same receipt hash, amount, date) | Check and deny; suggest reviewing recent submissions                |
 
 ### 8.2 Recovery Strategies
 
@@ -1217,18 +1282,18 @@ export const tools: Record<string, Tool> = {
 
 ### 10.1 Test Scenarios
 
-| Test Case | Scenario | Expected Outcome |
-|-----------|----------|------------------|
-| T1 | Junior employee submits $75 meal | Auto-approved |
-| T2 | Junior employee submits $200 travel | Escalated to manager |
-| T3 | Receipt amount differs by $0.50 | Warning but allowed |
-| T4 | Missing required receipt | Expense rejected - receipt mandatory |
-| T5 | Manager approves escalated expense | Employee notified |
-| T6 | Manager denies with reason | Employee receives reason |
-| T7 | File upload fails (corrupted image) | Error message to user, asked to re-upload |
-| T8 | OCR extraction fails | Error message, user asked to resubmit receipt |
-| T9 | Receipt amount differs by $0.50 | Warning highlighted but still processes |
-| T10 | Concurrent submissions | Both tracked separately |
+| Test Case | Scenario                            | Expected Outcome                              |
+| --------- | ----------------------------------- | --------------------------------------------- |
+| T1        | Junior employee submits $75 meal    | Auto-approved                                 |
+| T2        | Junior employee submits $200 travel | Escalated to manager                          |
+| T3        | Receipt amount differs by $0.50     | Warning but allowed                           |
+| T4        | Missing required receipt            | Expense rejected - receipt mandatory          |
+| T5        | Manager approves escalated expense  | Employee notified                             |
+| T6        | Manager denies with reason          | Employee receives reason                      |
+| T7        | File upload fails (corrupted image) | Error message to user, asked to re-upload     |
+| T8        | OCR extraction fails                | Error message, user asked to resubmit receipt |
+| T9        | Receipt amount differs by $0.50     | Warning highlighted but still processes       |
+| T10       | Concurrent submissions              | Both tracked separately                       |
 
 ## 10.2 Sample Test Data
 
@@ -1306,6 +1371,7 @@ INSERT INTO expense_requests VALUES
 ### 13.1 Receipt-First Expense Submission Workflow
 
 **User Initiates:**
+
 ```
 User: "I need to be reimbursed for a meal I had yesterday."
 
@@ -1315,6 +1381,7 @@ Agent Response:
 ```
 
 **User Uploads Receipt:**
+
 ```
 User: [Uploads receipt.jpg of Michelin Restaurant invoice]
 
@@ -1322,6 +1389,7 @@ Agent: "Processing receipt..."
 ```
 
 **AI Extracts & Confirms:**
+
 ```
 Agent: "✓ Receipt parsed successfully!
 
@@ -1340,6 +1408,7 @@ User: "Yes, that's correct."
 ```
 
 **Agent Collects Category & Description:**
+
 ```
 Agent: "Perfect! What category best describes this expense?"
 Options: Meals, Travel, Training, Software, Supplies, Home Office
@@ -1354,6 +1423,7 @@ Agent: "Great! Let me validate this against company policy..."
 ```
 
 **Validation & Decision:**
+
 ```
 Agent: "Checking against handbook policies...
 
@@ -1371,6 +1441,7 @@ View receipt: [link to receipt image]"
 ### 13.2 Escalation Example (Amount Exceeds Limit)
 
 **User Initiates:**
+
 ```
 User: "I need to expense a $500 software license for Adobe Creative Cloud (annual)"
 
@@ -1394,6 +1465,7 @@ User: "Annual software subscription for design work"
 ```
 
 **Validation Escalation:**
+
 ```
 Agent: "Checking policy...
 
@@ -1406,7 +1478,7 @@ Escalating to your manager for review...
 Your manager Sarah will review this and get back to you within 24 hours.
 View receipt: [link]"
 
-[Email to Manager Sarah]: 
+[Email to Manager Sarah]:
 "New Expense Escalation
 Employee: Alice Chen
 Amount: $500
@@ -1420,6 +1492,7 @@ Action Needed: Approve or Deny in Manager Dashboard"
 ### 13.3 Manager Approval Flow
 
 **Manager Dashboard:**
+
 ```
 Escalated Expenses (3 pending):
 
@@ -1443,6 +1516,7 @@ Reimbursement will be processed within 5-7 business days."
 ### 13.4 Denial Example (Policy Violation)
 
 **User Attempts Non-Reimbursable Item:**
+
 ```
 User: "I need to expense my parking for a client visit"
 
@@ -1462,14 +1536,14 @@ User: "Yes"
 Agent: "Checking handbook policies...
 
 ❌ Parking expenses are non-reimbursable per company policy
-(Section 6.2 - Travel expenses do not include parking. 
- If parking is required for business travel, it should be combined 
+(Section 6.2 - Travel expenses do not include parking.
+ If parking is required for business travel, it should be combined
  with hotel/accommodation expenses.)
 
 Your expense cannot be approved.
 
-If you believe this is a business-critical parking expense 
-(e.g., airport long-term parking for a business trip), 
+If you believe this is a business-critical parking expense
+(e.g., airport long-term parking for a business trip),
 please provide additional context and escalate to your manager."
 ```
 

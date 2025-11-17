@@ -23,6 +23,7 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { DropdownMenu } from "@/components/dropdown/DropdownMenu";
+import { ExpenseSubmissionUI } from "@/components/expense";
 import { Loader } from "@/components/loader/Loader";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { Textarea } from "@/components/textarea/Textarea";
@@ -44,6 +45,7 @@ function ChatInterface() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -97,6 +99,15 @@ function ChatInterface() {
 
     const message = agentInput;
     console.log("[UI] User submitting message:", message);
+    
+    // Check if user is requesting expense reimbursement
+    const expenseKeywords = /reimburs|expense|receipt|submit.*expense|need.*\$\d+/i;
+    if (expenseKeywords.test(message) && !showExpenseForm) {
+      console.log("[UI] Expense request detected, showing form");
+      setShowExpenseForm(true);
+      // Still send the message to the agent for context
+    }
+    
     setAgentInput("");
 
     // Send message to agent
@@ -268,6 +279,7 @@ function ChatInterface() {
             const isUser = m.role === "user";
             const showAvatar =
               index === 0 || agentMessages[index - 1]?.role !== m.role;
+            const isLastMessage = index === agentMessages.length - 1;
 
             return (
               <div key={m.id}>
@@ -379,6 +391,20 @@ function ChatInterface() {
                           return null;
                         })}
                       </div>
+                      
+                      {/* Show expense form after last assistant message when triggered */}
+                      {!isUser && isLastMessage && showExpenseForm && (
+                        <div className="mt-4">
+                          <ExpenseSubmissionUI
+                            onSubmit={(result) => {
+                              setShowExpenseForm(false);
+                              // The component already handles showing success/error messages
+                              // We just need to close the form after submission
+                              console.log("Expense submission result:", result);
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
