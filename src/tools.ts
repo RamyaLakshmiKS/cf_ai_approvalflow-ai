@@ -822,19 +822,31 @@ const process_receipt_ocr: Tool = {
       );
 
       // Extract text via Workers AI Vision
-      // Note: For demonstration, using a simpler approach. In production, use actual vision API
+      // Using vision model to extract receipt data
       const ocrResponse = (await context.env.AI.run(
         "@cf/llava-1.5-7b-gguf" as keyof AiModels,
         {
-          prompt: `Extract receipt data as JSON with these fields:
+          prompt: `You are a precise OCR system. Analyze this receipt image carefully and extract ONLY the information you can clearly see.
+
+CRITICAL INSTRUCTIONS:
+- Extract the TOTAL AMOUNT at the bottom of the receipt (after tax, the final amount to pay)
+- Look for words like "TOTAL", "Amount Due", "Total Amount", "Grand Total"
+- DO NOT make up numbers - only extract what you clearly see
+- DO NOT add tax if it's shown separately - use the final total
+- Return ONLY valid JSON with no extra text or markdown
+
+Required JSON format:
 {
-  "amount": number (total amount at bottom),
-  "currency": string (e.g., "USD"),
-  "date": string (YYYY-MM-DD format),
-  "merchant": string (vendor/store name),
-  "items": [{"description": string, "amount": number}]
+  "amount": <number - the final total amount>,
+  "currency": "USD",
+  "date": "<YYYY-MM-DD or empty string if not visible>",
+  "merchant": "<store/vendor name or empty string if not visible>",
+  "items": [{"description": "<item name>", "amount": <item price>}]
 }
-Return ONLY valid JSON, no markdown.`,
+
+Example: If receipt shows "TOTAL: $33.50", return {"amount": 33.50, "currency": "USD", "date": "", "merchant": "", "items": []}
+
+Return ONLY the JSON object, nothing else.`,
           image: [{ data: file_data, type: "base64" }]
         }
       )) as { response?: string };
@@ -849,22 +861,49 @@ Return ONLY valid JSON, no markdown.`,
       };
 
       try {
-        // Extract JSON from response (may contain markdown)
-        const jsonMatch =
-          ocrResponse.response?.match(/\{[\s\S]*\}/) ||
-          String(ocrResponse.response).match(/\{[\s\S]*\}/);
-        extracted = JSON.parse(jsonMatch?.[0] || String(ocrResponse.response));
+        console.log("[TOOL] process_receipt_ocr - Raw OCR response:", ocrResponse.response);
+        
+        // Extract JSON from response (may contain markdown or extra text)
+        const responseText = String(ocrResponse.response || "{}");
+        
+        // Try to find JSON object in the response
+        let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+          throw new Error("No JSON object found in OCR response");
+        }
+        
+        const parsedData = JSON.parse(jsonMatch[0]);
+        
+        // Validate required fields
+        if (typeof parsedData.amount !== 'number') {
+          throw new Error("OCR did not extract a valid amount");
+        }
+        
+        extracted = parsedData;
+        console.log("[TOOL] process_receipt_ocr - Extracted data:", extracted);
+        
       } catch (e) {
         console.error("[TOOL] process_receipt_ocr - JSON parse error:", e);
-        throw new Error("Failed to parse OCR response as JSON");
+        console.error("[TOOL] process_receipt_ocr - Raw response was:", ocrResponse.response);
+        throw new Error(`Failed to parse OCR response: ${e instanceof Error ? e.message : String(e)}`);
       }
 
       // Check for amount discrepancy
       const discrepancies: string[] = [];
-      if (Math.abs(extracted.amount - submitted_amount) > 0.01) {
+      const amountDifference = Math.abs(extracted.amount - submitted_amount);
+      
+      if (amountDifference > 0.01) {
+        const percentDiff = (amountDifference / submitted_amount) * 100;
         discrepancies.push(
-          `Amount mismatch: receipt shows $${extracted.amount}, submitted $${submitted_amount}`
+          `Amount mismatch: Receipt shows $${extracted.amount.toFixed(2)}, you submitted $${submitted_amount.toFixed(2)} (${percentDiff.toFixed(1)}% difference)`
         );
+        console.warn("[TOOL] process_receipt_ocr - Amount discrepancy detected:", {
+          extracted: extracted.amount,
+          submitted: submitted_amount,
+          difference: amountDifference,
+          percentDiff
+        });
       }
 
       // Update receipt_uploads with extraction results
