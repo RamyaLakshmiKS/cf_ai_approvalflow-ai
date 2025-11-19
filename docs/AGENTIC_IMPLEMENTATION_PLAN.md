@@ -1,25 +1,26 @@
 # ApprovalFlow AI - Agentic Implementation Plan
 
-## ReAct Framework Architecture
+## Cloudflare Agents SDK Architecture
 
-> **Based on HuggingFace Agent Course: Thought-Action-Observation Cycle**
+> **Built on Cloudflare Agents SDK with Durable Objects, State Management, and SQL**
 
 ---
 
 ## Executive Summary
 
-This implementation plan follows the **ReAct (Reasoning + Acting)** framework to build a proper AI agent that exhibits genuine agentic behavior through:
+This implementation plan uses the **Cloudflare Agents SDK** to build a stateful AI agent that exhibits genuine agentic behavior through:
 
-1. **Thought**: Internal reasoning and planning using LLM
-2. **Action**: Tool execution via structured function calls
-3. **Observation**: Integration of tool feedback into reasoning
-4. **Loop**: Iterative refinement until task completion
+1. **State Management**: Automatic persistence and synchronization across sessions
+2. **SQL Database**: Zero-latency embedded SQLite for data operations
+3. **Scheduling**: Native task scheduling with cron and one-time triggers
+4. **AI Integration**: Seamless Workers AI, OpenAI, and Anthropic support
+5. **WebSocket & HTTP**: Real-time bidirectional communication
 
-The agent demonstrates autonomy, multi-step problem solving, and dynamic adaptation—not just LLM wrapper functionality.
+The agent demonstrates autonomy, multi-step problem solving, state persistence, and dynamic adaptation using Cloudflare's native infrastructure.
 
 ---
 
-## Core Architecture: The ReAct Loop
+## Core Architecture: Cloudflare Agents SDK
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -29,180 +30,170 @@ The agent demonstrates autonomy, multi-step problem solving, and dynamic adaptat
                      │
                      ▼
         ┌────────────────────────────┐
-        │   THOUGHT (LLM Reasoning)  │
-        │  "Let me break this down:  │
-        │   1. Parse dates           │
-        │   2. Check balance         │
-        │   3. Validate blackouts    │
-        │   4. Auto-approve or       │
-        │      escalate"             │
+        │   Agent.onChatMessage()    │
+        │   (AIChatAgent instance)   │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   ACTION (Tool Call)       │
-        │  Call: get_pto_balance     │
-        │  Args: {user_id: "123"}    │
+        │   AI Model Integration     │
+        │   (Workers AI / OpenAI)    │
+        │   - Multi-step reasoning   │
+        │   - Tool calling           │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   OBSERVATION (Tool Result)│
-        │  "Balance: 18 days"        │
+        │   Tool Execution           │
+        │   - getCurrentUser()       │
+        │   - searchHandbook()       │
+        │   - validatePolicy()       │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   THOUGHT (Updated)        │
-        │  "Good, sufficient balance.│
-        │   Now check blackouts..."  │
+        │   Agent SQL Database       │
+        │   this.sql`SELECT...`      │
+        │   (Embedded SQLite)        │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   ACTION (Tool Call)       │
-        │  Call: check_blackouts     │
-        │  Args: {start: "2025-11-18"│
-        │         end: "2025-11-22"} │
+        │   State Management         │
+        │   this.setState({...})     │
+        │   (Auto-synced to clients) │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   OBSERVATION              │
-        │  "No blackout conflicts"   │
+        │   Task Scheduling          │
+        │   this.schedule(when, fn)  │
+        │   (Cron or delayed tasks)  │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   THOUGHT (Final)          │
-        │  "5 days exceeds junior    │
-        │   limit of 3. Escalate."   │
+        │   Response Streaming       │
+        │   (Server-Sent Events)     │
         └────────────┬───────────────┘
                      │
                      ▼
         ┌────────────────────────────┐
-        │   ACTION (Final)           │
-        │  Call: escalate_to_manager │
-        │  Call: send_response       │
-        └────────────┬───────────────┘
-                     │
-                     ▼
-        ┌────────────────────────────┐
-        │   FINAL ANSWER             │
-        │  "Your 5-day PTO request   │
-        │   has been escalated to    │
-        │   your manager for review."│
+        │   Client (useAgent hook)   │
+        │   - Auto state sync        │
+        │   - WebSocket connection   │
         └────────────────────────────┘
 ```
 
-**Data Sources Integration:**
+**Cloudflare Services Integration:**
 
+- **Agents SDK**: Base Agent and AIChatAgent classes with state, SQL, and scheduling
 - **Vectorize**: Semantic search of employee handbook for policy rules
-- **D1 Database**: Relational data (users, balances, requests, calendar)
+- **D1 Database**: Optional external relational data (can use Agent SQL instead)
 - **Workers AI**: LLM reasoning and response generation
-- **Durable Objects**: State management and conversation persistence
+- **Durable Objects**: Underlying infrastructure (Agent extends DO)
 
 ---
 
-## Agent Tools Definition
+## Agent State & Data Model
 
-Following the **stop-and-parse** approach, the agent has access to these tools:
-
-### 1. Information Retrieval Tools
-
-#### `get_current_user`
+The agent uses TypeScript type-safe state management:
 
 ```typescript
-{
-  name: "get_current_user",
+interface ApprovalAgentState {
+  // User context
+  userId?: string;
+  username?: string;
+  employeeLevel?: "junior" | "senior";
+  managerId?: string;
+  
+  // Active request tracking
+  activeRequest?: {
+    type: "pto" | "expense";
+    status: "gathering_info" | "validating" | "submitting" | "complete";
+    startDate?: string;
+    endDate?: string;
+    amount?: number;
+    category?: string;
+  };
+  
+  // Conversation metadata
+  conversationHistory: Array<{
+    role: "user" | "assistant" | "system";
+    content: string;
+    timestamp: number;
+  }>;
+  
+  // Cached policy data
+  policiesLoaded: boolean;
+  lastPolicyUpdate?: number;
+}
+```
+
+The agent persists this state automatically via `this.setState()` and can query it anytime with `this.state`.
+
+### 1. Information Retrieval Methods
+
+These methods can be exposed as tools to the AI model via AI SDK's tool calling:
+
+#### `getCurrentUser()`
+
+```typescript
+// Exposed as a tool to AI models
+const getCurrentUserTool = {
   description: "Retrieves the authenticated user's profile including ID, name, role, employee level, and manager.",
-  parameters: {
-    type: "object",
-    properties: {},
-    required: []
-  },
-  returns: {
-    id: "string",
-    username: "string",
-    employee_level: "junior | senior",
-    manager_id: "string",
-    hire_date: "string"
+  parameters: z.object({}),
+  execute: async () => {
+    return await this.getCurrentUser();
   }
-}
-```
+};
 
-**Implementation:**
-
-```typescript
-async function get_current_user(): Promise<UserProfile> {
-  const sessionToken = this.getSessionToken();
-  const userId = await this.validateSession(sessionToken);
-
-  const user = await this.env.APP_DB.prepare(
-    `
+// Implementation in Agent class
+private async getCurrentUser(): Promise<UserProfile> {
+  // Query from Agent's embedded SQL database
+  const result = await this.sql<UserProfile>`
     SELECT id, username, employee_level, manager_id, hire_date, department
-    FROM users WHERE id = ?
-  `
-  )
-    .bind(userId)
-    .first();
-
-  return user as UserProfile;
+    FROM users 
+    WHERE id = ${this.state.userId}
+  `;
+  
+  return result[0];
 }
 ```
 
-#### `search_employee_handbook`
+#### `searchEmployeeHandbook()`
 
 ```typescript
-{
-  name: "search_employee_handbook",
+// Exposed as a tool to AI models
+const searchHandbookTool = {
   description: "Searches the employee handbook using semantic search to find relevant policies and rules. Use this for any policy-related questions or validations.",
-  parameters: {
-    type: "object",
-    properties: {
-      query: {
-        type: "string",
-        description: "Natural language query about company policies (e.g., 'PTO approval limits', 'expense reimbursement rules', 'blackout periods')"
-      },
-      category: {
-        type: "string",
-        description: "Optional category filter: 'pto', 'expenses', 'benefits', 'general'",
-        enum: ["pto", "expenses", "benefits", "general"]
-      },
-      top_k: {
-        type: "number",
-        description: "Number of top results to return (default: 5)",
-        default: 5
-      }
-    },
-    required: ["query"]
-  },
-  returns: {
-    results: "array of {content, score, metadata: {section, category, last_updated}}",
-    total_found: "number"
+  parameters: z.object({
+    query: z.string().describe("Natural language query about company policies"),
+    category: z.enum(["pto", "expenses", "benefits", "general"]).optional(),
+    topK: z.number().default(5)
+  }),
+  execute: async ({ query, category, topK }) => {
+    return await this.searchEmployeeHandbook(query, category, topK);
   }
-}
-```
+};
 
-**Implementation:**
-
-```typescript
-async function search_employee_handbook(
+// Implementation in Agent class
+private async searchEmployeeHandbook(
   query: string,
   category?: string,
   topK: number = 5
 ) {
-  // Generate embedding for the query
+  // Generate embedding using Workers AI binding
   const queryEmbedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: query
+    text: [query]
   });
 
-  // Build Vectorize query with optional category filter
-  const vectorQuery = {
+  // Build Vectorize query
+  const vectorQuery: any = {
     vector: queryEmbedding.data[0],
     topK,
     returnValues: true,
-    returnMetadata: true
+    returnMetadata: "all"
   };
 
   if (category) {
@@ -210,44 +201,46 @@ async function search_employee_handbook(
   }
 
   // Search the handbook vector index
-  const results = await this.env.HANDBOOK_VECTORS.query(vectorQuery);
-
-  // Format results
-  const formattedResults = results.matches.map((match) => ({
-    content: match.values, // The handbook text chunk
-    score: match.score,
-    metadata: match.metadata // {section, category, last_updated}
-  }));
+  const results = await this.env.HANDBOOK_VECTORS.query(vectorQuery.vector, vectorQuery);
 
   return {
-    results: formattedResults,
+    results: results.matches.map(match => ({
+      content: match.values,
+      score: match.score,
+      metadata: match.metadata
+    })),
     total_found: results.matches.length
   };
 }
 ```
 
-#### `get_pto_balance`
+#### `getPTOBalance()`
 
 ```typescript
-{
-  name: "get_pto_balance",
+const getPTOBalanceTool = {
   description: "Retrieves the employee's current PTO balance, accrued days, used days, and rollover.",
-  parameters: {
-    type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "The employee's ID (optional, defaults to current user)"
-      }
-    },
-    required: []
-  },
-  returns: {
-    current_balance: "number",
-    total_accrued: "number",
-    total_used: "number",
-    rollover_from_previous_year: "number"
+  parameters: z.object({
+    employeeId: z.string().optional().describe("Employee ID, defaults to current user")
+  }),
+  execute: async ({ employeeId }) => {
+    return await this.getPTOBalance(employeeId);
   }
+};
+
+private async getPTOBalance(employeeId?: string): Promise<PTOBalance> {
+  const userId = employeeId || this.state.userId;
+  
+  const result = await this.sql<PTOBalance>`
+    SELECT 
+      current_balance,
+      total_accrued,
+      total_used,
+      rollover_from_previous_year
+    FROM pto_balances 
+    WHERE employee_id = ${userId}
+  `;
+  
+  return result[0];
 }
 ```
 
@@ -596,17 +589,1000 @@ async function validate_pto_policy(params: PTOValidationParams) {
 
 ---
 
-## Agent System Prompt (ReAct Framework)
+## Main Agent Implementation (Cloudflare Agents SDK)
 
 ```typescript
-const AGENT_SYSTEM_PROMPT = `You are ApprovalFlow AI, an intelligent agent that helps employees with PTO requests and expense reimbursements.
+// src/agents/approval-agent.ts
+import { Agent } from "agents";
+import { z } from "zod";
+import { generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 
-## Your Capabilities
+interface Env {
+  // Cloudflare bindings
+  AI: Ai;
+  HANDBOOK_VECTORS: VectorizeIndex;
+  // Agent binding (auto-provided by Agents SDK)
+  APPROVAL_AGENT: AgentNamespace<ApprovalAgent>;
+  // Secrets
+  OPENAI_API_KEY: string;
+}
 
-You have access to the following tools:
-${JSON.stringify(TOOLS, null, 2)}
+interface ApprovalAgentState {
+  userId?: string;
+  username?: string;
+  employeeLevel?: "junior" | "senior";
+  managerId?: string;
+  
+  activeRequest?: {
+    type: "pto" | "expense";
+    status: "gathering_info" | "validating" | "submitting" | "complete";
+    startDate?: string;
+    endDate?: string;
+    amount?: number;
+    category?: string;
+  };
+  
+  requestHistory: Array<{
+    id: string;
+    type: string;
+    status: string;
+    timestamp: number;
+  }>;
+}
 
-## How You Work (ReAct Framework)
+export class ApprovalAgent extends Agent<Env, ApprovalAgentState> {
+  // Initialize agent state
+  initialState: ApprovalAgentState = {
+    requestHistory: []
+  };
+  
+  // Handle HTTP requests
+  async onRequest(request: Request) {
+    const url = new URL(request.url);
+    
+    // Example: GET /pto/balance
+    if (url.pathname === "/pto/balance") {
+      const balance = await this.getPTOBalance();
+      return Response.json(balance);
+    }
+    
+    return new Response("Not found", { status: 404 });
+  }
+  
+  // Handle WebSocket connections
+  async onConnect(connection: Connection) {
+    // Initialize user session from connection
+    const userId = this.getUserIdFromConnection(connection);
+    
+    // Load user profile and update state
+    const user = await this.getCurrentUser(userId);
+    
+    this.setState({
+      ...this.state,
+      userId: user.id,
+      username: user.username,
+      employeeLevel: user.employee_level,
+      managerId: user.manager_id
+    });
+    
+    connection.accept();
+    
+    // Send welcome message
+    connection.send(JSON.stringify({
+      type: "welcome",
+      message: `Hello ${user.username}! I'm here to help with PTO requests and expenses.`
+    }));
+  }
+  
+  // Handle incoming messages (main chat interface)
+  async onMessage(connection: Connection, message: string | ArrayBuffer) {
+    const userMessage = typeof message === "string" ? message : new TextDecoder().decode(message);
+    
+    try {
+      // Parse user intent and generate AI response with tool calling
+      const response = await this.processUserMessage(userMessage);
+      
+      // Send response back to client
+      connection.send(JSON.stringify({
+        type: "message",
+        content: response
+      }));
+      
+    } catch (error) {
+      console.error("Error processing message:", error);
+      connection.send(JSON.stringify({
+        type: "error",
+        message: "Sorry, I encountered an error processing your request."
+      }));
+    }
+  }
+  
+  // Core AI processing with tool calling
+  private async processUserMessage(userMessage: string): Promise<string> {
+    const openai = createOpenAI({
+      apiKey: this.env.OPENAI_API_KEY,
+    });
+    
+    // Define tools for AI model
+    const tools = {
+      getCurrentUser: {
+        description: "Get current user's profile and permissions",
+        parameters: z.object({}),
+        execute: async () => await this.getCurrentUser()
+      },
+      
+      searchHandbook: {
+        description: "Search employee handbook for policies",
+        parameters: z.object({
+          query: z.string(),
+          category: z.enum(["pto", "expenses", "benefits", "general"]).optional()
+        }),
+        execute: async ({ query, category }) => 
+          await this.searchEmployeeHandbook(query, category)
+      },
+      
+      getPTOBalance: {
+        description: "Get PTO balance for user",
+        parameters: z.object({
+          employeeId: z.string().optional()
+        }),
+        execute: async ({ employeeId }) => await this.getPTOBalance(employeeId)
+      },
+      
+      calculateBusinessDays: {
+        description: "Calculate business days between dates",
+        parameters: z.object({
+          startDate: z.string(),
+          endDate: z.string()
+        }),
+        execute: async ({ startDate, endDate }) => 
+          await this.calculateBusinessDays(startDate, endDate)
+      },
+      
+      validatePTOPolicy: {
+        description: "Validate PTO request against policies",
+        parameters: z.object({
+          startDate: z.string(),
+          endDate: z.string(),
+          reason: z.string().optional()
+        }),
+        execute: async (params) => await this.validatePTOPolicy(params)
+      },
+      
+      submitPTORequest: {
+        description: "Submit PTO request to database",
+        parameters: z.object({
+          startDate: z.string(),
+          endDate: z.string(),
+          totalDays: z.number(),
+          reason: z.string(),
+          status: z.enum(["auto_approved", "pending", "denied"])
+        }),
+        execute: async (params) => await this.submitPTORequest(params)
+      },
+      
+      scheduleFollowUp: {
+        description: "Schedule a follow-up task",
+        parameters: z.object({
+          when: z.string().describe("Delay like '1 hour' or cron '0 9 * * *'"),
+          taskName: z.string(),
+          data: z.record(z.any())
+        }),
+        execute: async ({ when, taskName, data }) => {
+          await this.schedule(when, taskName, data);
+          return { scheduled: true, task: taskName };
+        }
+      }
+    };
+    
+    // Generate response with tool calling
+    const result = await generateText({
+      model: openai("gpt-4-turbo"),
+      system: this.getSystemPrompt(),
+      messages: [
+        { role: "user", content: userMessage }
+      ],
+      tools,
+      maxToolRoundtrips: 5, // Allow multi-step tool usage
+    });
+    
+    // Update state with conversation history
+    this.setState({
+      ...this.state,
+      requestHistory: [
+        ...this.state.requestHistory,
+        {
+          id: crypto.randomUUID(),
+          type: "chat",
+          status: "complete",
+          timestamp: Date.now()
+        }
+      ]
+    });
+    
+    return result.text;
+  }
+  
+  // System prompt for AI model
+  private getSystemPrompt(): string {
+    return `You are ApprovalFlow AI, an intelligent agent helping employees with PTO requests and expense reimbursements.
+
+Current User Context:
+- Name: ${this.state.username}
+- Level: ${this.state.employeeLevel}
+- Manager ID: ${this.state.managerId}
+
+Your Capabilities:
+1. **Search employee handbook** for current policies (ALWAYS do this before making policy decisions)
+2. **Check PTO balances** and validate requests
+3. **Calculate business days** excluding weekends/holidays
+4. **Validate policies** against handbook rules
+5. **Submit requests** with auto-approval or escalation
+6. **Schedule follow-ups** for pending requests
+
+Important Guidelines:
+- Always search the handbook first for policy information (don't guess)
+- Be friendly, clear, and concise
+- For PTO requests:
+  * Junior employees: auto-approve up to 3 days
+  * Senior employees: auto-approve up to 10 days
+  * Above limits: escalate to manager
+- Explain policy violations clearly
+- Always confirm actions before executing
+
+Think step-by-step and use tools to gather accurate information.`;
+  }
+  
+  // Tool Implementation: Get Current User
+  private async getCurrentUser(userId?: string): Promise<any> {
+    const uid = userId || this.state.userId;
+    
+    const result = await this.sql<any>`
+      SELECT id, username, employee_level, manager_id, hire_date, department
+      FROM users 
+      WHERE id = ${uid}
+    `;
+    
+    return result[0];
+  }
+  
+  // Tool Implementation: Search Handbook
+  private async searchEmployeeHandbook(query: string, category?: string) {
+    // Generate embedding
+    const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: [query]
+    });
+    
+    // Query Vectorize
+    const vectorQuery: any = {
+      vector: embedding.data[0],
+      topK: 5,
+      returnValues: true,
+      returnMetadata: "all"
+    };
+    
+    if (category) {
+      vectorQuery.filter = { category };
+    }
+    
+    const results = await this.env.HANDBOOK_VECTORS.query(
+      vectorQuery.vector, 
+      vectorQuery
+    );
+    
+    return {
+      results: results.matches.map(m => ({
+        content: m.values,
+        score: m.score,
+        metadata: m.metadata
+      }))
+    };
+  }
+  
+  // Tool Implementation: Get PTO Balance
+  private async getPTOBalance(employeeId?: string) {
+    const uid = employeeId || this.state.userId;
+    
+    const result = await this.sql<any>`
+      SELECT current_balance, total_accrued, total_used, rollover_from_previous_year
+      FROM pto_balances 
+      WHERE employee_id = ${uid}
+    `;
+    
+    return result[0];
+  }
+  
+  // Tool Implementation: Calculate Business Days
+  private async calculateBusinessDays(startDate: string, endDate: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Get holidays from agent SQL
+    const holidays = await this.sql<{ start_date: string }>`
+      SELECT start_date 
+      FROM company_calendar 
+      WHERE event_type = 'holiday' 
+        AND start_date BETWEEN ${startDate} AND ${endDate}
+    `;
+    
+    const holidaySet = new Set(holidays.map(h => h.start_date));
+    
+    let businessDays = 0;
+    let weekendDays = 0;
+    const current = new Date(start);
+    
+    while (current <= end) {
+      const day = current.getDay();
+      const dateStr = current.toISOString().split("T")[0];
+      
+      if (day === 0 || day === 6) {
+        weekendDays++;
+      } else if (!holidaySet.has(dateStr)) {
+        businessDays++;
+      }
+      
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return { businessDays, weekendDays, holidays: Array.from(holidaySet) };
+  }
+  
+  // Tool Implementation: Validate PTO Policy
+  private async validatePTOPolicy(params: {
+    startDate: string;
+    endDate: string;
+    reason?: string;
+  }) {
+    const violations = [];
+    
+    // Get balance
+    const balance = await this.getPTOBalance();
+    const { businessDays } = await this.calculateBusinessDays(params.startDate, params.endDate);
+    
+    // Check balance
+    if (balance.current_balance < businessDays) {
+      violations.push({
+        policy: "insufficient_balance",
+        message: `Insufficient PTO. You have ${balance.current_balance} days but need ${businessDays} days.`
+      });
+    }
+    
+    // Check blackouts
+    const blackouts = await this.sql<any>`
+      SELECT * FROM company_calendar 
+      WHERE event_type = 'blackout'
+        AND ((start_date BETWEEN ${params.startDate} AND ${params.endDate})
+          OR (end_date BETWEEN ${params.startDate} AND ${params.endDate}))
+    `;
+    
+    if (blackouts.length > 0) {
+      violations.push({
+        policy: "blackout_conflict",
+        message: `Request overlaps with blackout period: ${blackouts[0].name}`
+      });
+    }
+    
+    // Determine auto-approval
+    const limit = this.state.employeeLevel === "senior" ? 10 : 3;
+    const canAutoApprove = businessDays <= limit && violations.length === 0;
+    const requiresEscalation = businessDays > limit && violations.length === 0;
+    
+    return {
+      isValid: violations.length === 0,
+      canAutoApprove,
+      requiresEscalation,
+      violations,
+      recommendation: canAutoApprove ? "AUTO_APPROVE" : 
+                     requiresEscalation ? "ESCALATE" : "DENY"
+    };
+  }
+  
+  // Tool Implementation: Submit PTO Request
+  private async submitPTORequest(params: {
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+    reason: string;
+    status: string;
+  }) {
+    const requestId = crypto.randomUUID();
+    
+    await this.sql`
+      INSERT INTO pto_requests (
+        id, employee_id, manager_id, start_date, end_date,
+        total_days, reason, status, approval_type, created_at
+      ) VALUES (
+        ${requestId}, ${this.state.userId}, ${this.state.managerId},
+        ${params.startDate}, ${params.endDate}, ${params.totalDays},
+        ${params.reason}, ${params.status}, 'auto', ${Date.now()}
+      )
+    `;
+    
+    // If auto-approved, update balance
+    if (params.status === "auto_approved") {
+      await this.sql`
+        UPDATE pto_balances 
+        SET current_balance = current_balance - ${params.totalDays}
+        WHERE employee_id = ${this.state.userId}
+      `;
+    }
+    
+    // Update state
+    this.setState({
+      ...this.state,
+      activeRequest: {
+        type: "pto",
+        status: "complete",
+        startDate: params.startDate,
+        endDate: params.endDate
+      }
+    });
+    
+    return {
+      requestId,
+      status: params.status,
+      message: "Request submitted successfully"
+    };
+  }
+  
+  // Handle state updates (called automatically when setState is used)
+  onStateUpdate(state: ApprovalAgentState, source: string) {
+    console.log("State updated:", { state, source });
+  }
+  
+  // Scheduled task handler (called by this.schedule)
+  async checkPendingRequests(data: any) {
+    const pending = await this.sql<any>`
+      SELECT * FROM pto_requests 
+      WHERE status = 'pending' 
+        AND employee_id = ${this.state.userId}
+    `;
+    
+    // Send reminder if any pending
+    if (pending.length > 0) {
+      console.log(`User has ${pending.length} pending requests`);
+    }
+  }
+  
+  // Helper to extract user ID from connection metadata
+  private getUserIdFromConnection(connection: Connection): string {
+    // In real implementation, extract from connection state or auth token
+    return connection.id;
+  }
+}
+
+// Export worker handler with routing
+export default {
+  async fetch(request: Request, env: Env) {
+    // Use routeAgentRequest for automatic routing to /agents/:agent/:name
+    const agentResponse = await routeAgentRequest(request, env);
+    
+    if (agentResponse) {
+      return agentResponse;
+    }
+    
+    // Fallback for other routes
+    return Response.json({ message: "ApprovalFlow AI Agent" });
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+---
+
+## Configuration (wrangler.jsonc)
+
+```jsonc
+{
+  "name": "approvalflow-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-11",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "APPROVAL_AGENT",
+        "class_name": "ApprovalAgent"
+      }
+    ]
+  },
+  
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ApprovalAgent"]
+    }
+  ],
+  
+  "vectorize": [
+    {
+      "binding": "HANDBOOK_VECTORS",
+      "index_name": "handbook_vectors"
+    }
+  ],
+  
+  "ai": {
+    "binding": "AI"
+  },
+  
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
+```
+
+---
+
+## Client Integration (React)
+
+Using the `useAgent` hook from `agents/react`:
+
+```typescript
+// src/components/ApprovalChat.tsx
+import { useAgent } from "agents/react";
+import { useState } from "react";
+
+export function ApprovalChat() {
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  
+  // Connect to agent with automatic state sync
+  const agent = useAgent({
+    agent: "approval-agent",
+    name: "user-123", // Unique per user
+    
+    onMessage: (msg) => {
+      const data = JSON.parse(msg.data);
+      if (data.type === "message") {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: data.content
+        }]);
+      }
+    },
+    
+    onStateUpdate: (newState) => {
+      console.log("Agent state updated:", newState);
+      // Update UI based on agent state
+    },
+    
+    onOpen: () => console.log("Connected to agent"),
+    onClose: () => console.log("Disconnected from agent")
+  });
+  
+  const sendMessage = () => {
+    if (!message.trim()) return;
+    
+    // Add to local messages
+    setMessages(prev => [...prev, {
+      role: "user",
+      content: message
+    }]);
+    
+    // Send to agent
+    agent.send(message);
+    setMessage("");
+  };
+  
+  return (
+    <div className="chat-container">
+      <div className="messages">
+        {messages.map((msg, i) => (
+          <div key={i} className={`message ${msg.role}`}>
+            {msg.content}
+          </div>
+        ))}
+      </div>
+      
+      <div className="input-area">
+        <input
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+          placeholder="Ask about PTO or expenses..."
+        />
+        <button onClick={sendMessage}>Send</button>
+      </div>
+      
+      {/* Display agent state */}
+      {agent.state?.activeRequest && (
+        <div className="active-request">
+          Processing {agent.state.activeRequest.type} request...
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## Key Agentic Behaviors Demonstrated
+
+### 1. **Stateful Persistence**
+
+Agent state survives restarts and syncs across all client connections:
+
+```typescript
+// State is automatically persisted
+this.setState({
+  activeRequest: {
+    type: "pto",
+    status: "validating",
+    startDate: "2025-12-20"
+  }
+});
+
+// Available immediately on reconnect
+console.log(this.state.activeRequest); // Persisted!
+```
+
+### 2. **Multi-Step Tool Orchestration**
+
+AI model autonomously chains multiple tools:
+
+```
+User: "Book me 5 days off next week"
+  ↓
+AI calls: getCurrentUser() → returns junior employee
+  ↓
+AI calls: searchHandbook("PTO approval limits") → returns "3 days for junior"
+  ↓
+AI calls: calculateBusinessDays() → returns 5 days
+  ↓
+AI calls: validatePTOPolicy() → returns "ESCALATE"
+  ↓
+AI response: "Your 5-day request exceeds the 3-day auto-approval limit and will be sent to your manager."
+```
+
+### 3. **Task Scheduling**
+
+Native support for delayed and recurring tasks:
+
+```typescript
+// Schedule follow-up in 1 hour
+await this.schedule("1 hour", "checkPendingRequests", { userId: "123" });
+
+// Schedule daily reminder at 9am
+await this.schedule("0 9 * * *", "sendDailyReminder", {});
+
+// Handler is called automatically
+async checkPendingRequests(data: any) {
+  const pending = await this.sql`SELECT * FROM pto_requests WHERE status = 'pending'`;
+  // Send notifications...
+}
+```
+
+### 4. **Zero-Latency SQL**
+
+Embedded SQLite database with type-safe queries:
+
+```typescript
+// Type-safe query
+const users = await this.sql<User>`
+  SELECT * FROM users WHERE employee_level = ${'junior'}
+`;
+
+// Transactions are automatic
+await this.sql`
+  UPDATE pto_balances SET current_balance = current_balance - ${days}
+  WHERE employee_id = ${userId}
+`;
+```
+
+### 5. **Real-Time State Sync**
+
+State changes automatically broadcast to all clients:
+
+```typescript
+// In agent
+this.setState({ requestCount: this.state.requestCount + 1 });
+
+// In React client (useAgent hook)
+onStateUpdate: (newState) => {
+  console.log("New request count:", newState.requestCount);
+  // UI updates automatically
+}
+```
+
+---
+
+## Success Metrics for Agentic Behavior
+
+| Metric                       | Target | Measurement                                 |
+| ---------------------------- | ------ | ------------------------------------------- |
+| **Tool Usage Rate**          | >80%   | Percentage of requests using ≥2 tools       |
+| **Multi-Step Planning**      | >60%   | Requests requiring 3+ sequential tool calls |
+| **Adaptive Decisions**       | >90%   | Correct routing (approve/deny/escalate)     |
+| **Handbook Search Accuracy** | >95%   | Correct policy retrieval from vector search |
+| **State Persistence**        | 100%   | Zero data loss across agent restarts        |
+| **Response Latency**         | <2s    | P95 latency for simple requests             |
+| **Response Accuracy**        | >95%   | Correct policy interpretation               |
+
+---
+
+## Implementation Phases
+
+### Phase 1: Agent Infrastructure (Week 1)
+
+- [ ] Set up Cloudflare Agents SDK project structure
+- [ ] Configure Durable Objects bindings for Agent
+- [ ] Set up Vectorize index for employee handbook
+- [ ] Implement Agent class with basic lifecycle methods
+- [ ] Add embedded SQL schema migrations
+- [ ] Create Wrangler configuration with proper bindings
+- [ ] Validate Wrangler version (>=3.71.0)
+
+### Phase 2: Tool Implementation (Week 2)
+
+- [ ] Implement core tool methods (getCurrentUser, getPTOBalance, etc.)
+- [ ] Add Vectorize integration for handbook search
+- [ ] Build policy validation engine
+- [ ] Implement business days calculation with holidays
+- [ ] Add audit logging to agent SQL
+- [ ] Test each tool independently with sample data
+
+### Phase 3: AI Integration (Week 3)
+
+- [ ] Integrate AI SDK with tool calling
+- [ ] Configure Workers AI or OpenAI for LLM reasoning
+- [ ] Build system prompts for PTO use case
+- [ ] Implement streaming responses
+- [ ] Add error handling and retry logic
+- [ ] Test multi-step tool orchestration
+
+### Phase 4: Client & Scheduling (Week 4)
+
+- [ ] Build React client with useAgent hook
+- [ ] Implement WebSocket connection handling
+- [ ] Add state synchronization to UI
+- [ ] Implement task scheduling (reminders, follow-ups)
+- [ ] Add comprehensive logging and observability
+- [ ] Deploy and test end-to-end workflows
+
+---
+
+## Technical Implementation Details
+
+### State Management Pattern
+
+```typescript
+// State is automatically persisted and synced
+interface AgentState {
+  // User context
+  userId: string;
+  
+  // Active requests
+  activeRequest?: PendingRequest;
+  
+  // History
+  requestHistory: Request[];
+}
+
+// Update state (triggers onStateUpdate on all clients)
+this.setState({
+  ...this.state,
+  activeRequest: { type: "pto", status: "pending" }
+});
+
+// State survives agent restarts
+// State syncs to all connected clients automatically
+```
+
+### SQL Database Pattern
+
+```typescript
+// Create tables in agent initialization
+async onStart() {
+  await this.sql`
+    CREATE TABLE IF NOT EXISTS pto_requests (
+      id TEXT PRIMARY KEY,
+      employee_id TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      status TEXT,
+      created_at INTEGER
+    )
+  `;
+}
+
+// Type-safe queries with generics
+const requests = await this.sql<PTORequest>`
+  SELECT * FROM pto_requests 
+  WHERE employee_id = ${userId}
+  ORDER BY created_at DESC
+`;
+```
+
+### Scheduling Pattern
+
+```typescript
+// One-time delay
+await this.schedule("1 hour", "followUp", { requestId: "123" });
+
+// Recurring cron
+await this.schedule("0 9 * * *", "dailyDigest", {});
+
+// Handler
+async followUp(data: { requestId: string }) {
+  const request = await this.sql`SELECT * FROM pto_requests WHERE id = ${data.requestId}`;
+  // Process...
+}
+
+// Cancel scheduled task
+const { id } = await this.schedule("1 day", "reminder", {});
+await this.cancelSchedule(id);
+```
+
+### Tool Calling with AI SDK
+
+```typescript
+import { generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const tools = {
+  searchHandbook: {
+    description: "Search employee handbook",
+    parameters: z.object({
+      query: z.string()
+    }),
+    execute: async ({ query }) => await this.searchEmployeeHandbook(query)
+  }
+};
+
+const result = await generateText({
+  model: openai("gpt-4-turbo"),
+  system: "You are ApprovalFlow AI...",
+  messages: [{ role: "user", content: userMessage }],
+  tools,
+  maxToolRoundtrips: 5 // Allow multi-step reasoning
+});
+```
+
+---
+
+## Vectorize Configuration for Employee Handbook
+
+### Setup Steps
+
+1. **Create Vectorize Index**:
+
+   ```bash
+   npx wrangler vectorize create handbook_vectors --dimensions=768 --metric=cosine
+   ```
+
+2. **Configure in wrangler.jsonc**:
+
+   ```jsonc
+   {
+     "vectorize": [
+       {
+         "binding": "HANDBOOK_VECTORS",
+         "index_name": "handbook_vectors"
+       }
+     ]
+   }
+   ```
+
+3. **Populate Handbook Data**:
+   - Chunk the employee handbook into sections
+   - Generate embeddings using `@cf/baai/bge-base-en-v1.5`
+   - Insert vectors with metadata (section, category, last_updated)
+
+### Caveats & Best Practices
+
+- **Wrangler version**: Requires Wrangler 3.71.0+ for Vectorize V2
+- **Model dimensions**: Use 768 dimensions for `@cf/baai/bge-base-en-v1.5`
+- **Use `upsert`**: For idempotent re-ingestions
+- **Batch processing**: Process in batches of 100 vectors to avoid timeouts
+- **Metadata filtering**: Store and filter by `category`, `section`, `last_updated`
+- **Error handling**: Wrap operations in try/catch with retry logic
+- **Testing**: Add validation queries after ingestion
+
+### Example Ingestion
+
+```typescript
+async function populateHandbookVectors(env: Env, chunks: HandbookChunk[]) {
+  const BATCH_SIZE = 100;
+  const model = "@cf/baai/bge-base-en-v1.5";
+
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
+    
+    try {
+      // Generate embeddings
+      const texts = batch.map(c => c.content);
+      const embeddingResp = await env.AI.run(model, { text: texts });
+      
+      // Prepare vectors
+      const vectors = embeddingResp.data[0].map((vector, idx) => ({
+        id: batch[idx].id,
+        values: vector,
+        metadata: batch[idx].metadata
+      }));
+      
+      // Upsert to Vectorize
+      await env.HANDBOOK_VECTORS.upsert(vectors);
+      console.log(`Inserted batch ${i / BATCH_SIZE + 1}`);
+      
+    } catch (err) {
+      console.error(`Failed to insert batch:`, err);
+      // Implement retry logic here
+    }
+  }
+}
+```
+
+### Handbook Data Structure
+
+```typescript
+interface HandbookChunk {
+  id: string;
+  content: string; // Text chunk
+  metadata: {
+    section: string; // "Time Off Policy", "Expense Reimbursement"
+    category: "pto" | "expenses" | "benefits" | "general";
+    last_updated: string; // ISO date
+    page_number?: number;
+  };
+}
+```
+
+---
+
+## Advantages of Cloudflare Agents SDK
+
+| Feature                  | Custom ReAct Implementation | Cloudflare Agents SDK       |
+| ------------------------ | --------------------------- | --------------------------- |
+| **State Management**     | Manual with Durable Storage | Automatic with `setState()` |
+| **SQL Database**         | Requires D1 binding         | Embedded SQLite built-in    |
+| **Scheduling**           | Manual with Alarms API      | Native `schedule()` method  |
+| **Client Sync**          | Custom WebSocket logic      | Auto-sync with `useAgent`   |
+| **Type Safety**          | Manual typing               | Full TypeScript support     |
+| **Tool Calling**         | Custom prompt engineering   | AI SDK integration          |
+| **Session Management**   | Manual connection tracking  | Built-in connection API     |
+| **Development Velocity** | Slower, more boilerplate    | Faster, less code           |
+
+---
+
+## Migration from Custom ReAct to Agents SDK
+
+For existing custom implementations:
+
+1. **Replace base class**: Change from `DurableObject` to `Agent<Env, State>`
+2. **Replace storage**: Migrate from `this.ctx.storage` to `this.setState()` and `this.sql`
+3. **Replace WebSocket handlers**: Use `onConnect`, `onMessage`, `onClose` lifecycle methods
+4. **Replace tool execution**: Use AI SDK tool calling instead of custom parsing
+5. **Add scheduling**: Replace manual alarms with `this.schedule()`
+6. **Update client**: Use `useAgent` hook instead of custom WebSocket client
+
+---
+
+## Next Steps
+
+1. **Initialize project structure** with Agents SDK
+2. **Set up Vectorize** for employee handbook
+3. **Implement Agent class** with core lifecycle methods
+4. **Add embedded SQL schema** for users, balances, requests
+5. **Build tool methods** for PTO operations
+6. **Integrate AI SDK** with tool calling
+7. **Create React client** with useAgent hook
+8. **Test end-to-end** PTO request workflow
+9. **Add scheduling** for reminders and follow-ups
+10. **Deploy and monitor** with observability
+
+---
+
+## References
+
+- [Cloudflare Agents SDK Documentation](https://developers.cloudflare.com/agents/)
+- [Agents SDK GitHub](https://github.com/cloudflare/agents-sdk)
+- [AI SDK Documentation](https://sdk.vercel.ai/docs)
+- [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
+- [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
 
 You operate in a Thought-Action-Observation loop:
 
@@ -761,786 +1737,28 @@ FINAL ANSWER:
 
 ---
 
-Now, help the user with their request. Always think step-by-step and use tools!
-`;
-```
-
----
-
-## Agent Implementation (Durable Object)
-
-````typescript
-// src/agents/approval-agent.ts
-import { AIChatAgent } from "agents/ai-chat-agent";
-import { streamText } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
-
-interface AgentState {
-  currentThought?: string;
-  actionHistory: Array<{
-    thought: string;
-    action: string;
-    observation: any;
-    timestamp: number;
-  }>;
-  maxIterations: number;
-  currentIteration: number;
-}
-
-export class ApprovalAgent extends AIChatAgent<Env> {
-  private agentState: AgentState = {
-    actionHistory: [],
-    maxIterations: 10,
-    currentIteration: 0
-  };
-
-  async onChatMessage(onFinish, options) {
-    const userMessage = this.messages[this.messages.length - 1];
-
-    // Initialize ReAct loop
-    let continueLoop = true;
-    let finalAnswer = null;
-
-    while (
-      continueLoop &&
-      this.agentState.currentIteration < this.agentState.maxIterations
-    ) {
-      // THOUGHT: LLM generates reasoning + next action
-      const llmResponse = await this.generateThoughtAndAction(
-        userMessage.content
-      );
-
-      // Parse the action
-      const parsedAction = this.parseAction(llmResponse);
-
-      if (parsedAction.action === "final_answer") {
-        // Loop complete
-        finalAnswer = parsedAction.action_input.response;
-        continueLoop = false;
-      } else {
-        // ACTION: Execute the tool
-        const observation = await this.executeTool(
-          parsedAction.action,
-          parsedAction.action_input
-        );
-
-        // Store in action history
-        this.agentState.actionHistory.push({
-          thought: llmResponse.thought,
-          action: parsedAction.action,
-          observation,
-          timestamp: Date.now()
-        });
-
-        // Add observation to conversation context for next iteration
-        this.addObservationToContext(observation);
-
-        this.agentState.currentIteration++;
-      }
-    }
-
-    // If max iterations reached without final answer
-    if (!finalAnswer) {
-      finalAnswer =
-        "I apologize, but I've reached my processing limit. Please try rephrasing your request or contact support.";
-    }
-
-    // Stream the final answer
-    return this.streamFinalAnswer(finalAnswer, onFinish);
-  }
-
-  private async generateThoughtAndAction(userInput: string) {
-    const workersai = createWorkersAI({ binding: this.env.AI });
-    const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
-
-    // Build context with action history
-    const context = this.buildContextFromHistory();
-
-    const messages = [
-      { role: "system", content: AGENT_SYSTEM_PROMPT },
-      { role: "user", content: userInput },
-      ...context
-    ];
-
-    const result = await streamText({
-      model,
-      messages,
-      temperature: 0.1 // Lower temperature for more deterministic reasoning
-    });
-
-    const fullResponse = await result.text();
-
-    // Extract THOUGHT and ACTION from response
-    return this.extractThoughtAndAction(fullResponse);
-  }
-
-  private extractThoughtAndAction(response: string) {
-    // Parse the LLM response to extract thought and action
-    const thoughtMatch = response.match(
-      /THOUGHT:(.+?)(?=ACTION:|FINAL ANSWER:|$)/s
-    );
-    const actionMatch = response.match(/ACTION:\s*```json\s*(\{.+?\})\s*```/s);
-    const finalMatch = response.match(
-      /FINAL ANSWER:\s*```json\s*(\{.+?\})\s*```/s
-    );
-
-    return {
-      thought: thoughtMatch ? thoughtMatch[1].trim() : "",
-      action:
-        actionMatch || finalMatch
-          ? JSON.parse((actionMatch || finalMatch)[1])
-          : null
-    };
-  }
-
-  private parseAction(llmResponse: any) {
-    if (!llmResponse.action) {
-      throw new Error("No action found in LLM response");
-    }
-
-    return llmResponse.action;
-  }
-
-  private async executeTool(toolName: string, params: any): Promise<any> {
-    // Tool registry
-    const tools = {
-      get_current_user: () => this.getCurrentUser(),
-      search_employee_handbook: (p) =>
-        this.searchEmployeeHandbook(p.query, p.category, p.top_k),
-      get_pto_balance: (p) => this.getPTOBalance(p.employee_id),
-      check_blackout_periods: (p) =>
-        this.checkBlackoutPeriods(p.start_date, p.end_date),
-      calculate_business_days: (p) =>
-        this.calculateBusinessDays(p.start_date, p.end_date),
-      validate_pto_policy: (p) => this.validatePTOPolicy(p),
-      validate_expense_policy: (p) => this.validateExpensePolicy(p),
-      submit_pto_request: (p) => this.submitPTORequest(p),
-      escalate_to_manager: (p) => this.escalateToManager(p),
-      update_pto_balance: (p) => this.updatePTOBalance(p),
-      log_audit_event: (p) => this.logAuditEvent(p),
-      send_notification: (p) => this.sendNotification(p),
-      get_pto_history: (p) => this.getPTOHistory(p),
-      calculate_pto_accrual: (p) => this.calculatePTOAccrual(p),
-      submit_expense_request: (p) => this.submitExpenseRequest(p)
-    };
-
-    const toolFunc = tools[toolName];
-    if (!toolFunc) {
-      throw new Error(`Unknown tool: ${toolName}`);
-    }
-
-    try {
-      const result = await toolFunc(params);
-
-      // Log successful tool execution
-      await this.logAuditEvent({
-        entity_type: "tool_execution",
-        entity_id: crypto.randomUUID(),
-        action: "executed",
-        actor_type: "ai_agent",
-        details: JSON.stringify({ tool: toolName, params, result })
-      });
-
-      return result;
-    } catch (error) {
-      // Log error
-      console.error(`Tool execution error: ${toolName}`, error);
-      return { error: error.message, tool: toolName };
-    }
-  }
-
-  // Tool implementations (delegate to policy engine and database)
-
-  private async getCurrentUser(): Promise<UserProfile> {
-    const sessionToken = await this.getSessionFromContext();
-    const userId = await this.validateSession(sessionToken);
-
-    const user = await this.env.APP_DB.prepare(
-      `
-      SELECT id, username, employee_level, manager_id, hire_date, department, role
-      FROM users WHERE id = ?
-    `
-    )
-      .bind(userId)
-      .first();
-
-    return user as UserProfile;
-  }
-
-  private async searchEmployeeHandbook(
-    query: string,
-    category?: string,
-    topK: number = 5
-  ) {
-    // Generate embedding for the query using Workers AI
-    const embeddingResponse = await this.env.AI.run(
-      "@cf/baai/bge-base-en-v1.5",
-      {
-        text: query
-      }
-    );
-
-    // Build Vectorize query
-    const vectorQuery = {
-      vector: embeddingResponse.data[0],
-      topK,
-      returnValues: true,
-      returnMetadata: true
-    };
-
-    if (category) {
-      vectorQuery.filter = { category };
-    }
-
-    // Search the handbook vector index
-    const results = await this.env.HANDBOOK_VECTORS.query(vectorQuery);
-
-    // Format results
-    const formattedResults = results.matches.map((match) => ({
-      content: match.values, // The handbook text chunk
-      score: match.score,
-      metadata: match.metadata // {section, category, last_updated}
-    }));
-
-    return {
-      results: formattedResults,
-      total_found: results.matches.length
-    };
-  }
-
-  private async getPTOBalance(employeeId?: string): Promise<PTOBalance> {
-    const user = employeeId ? { id: employeeId } : await this.getCurrentUser();
-
-    const balance = await this.env.APP_DB.prepare(
-      `
-      SELECT * FROM pto_balances WHERE employee_id = ?
-    `
-    )
-      .bind(user.id)
-      .first();
-
-    return balance as PTOBalance;
-  }
-
-  private async checkBlackoutPeriods(startDate: string, endDate: string) {
-    const blackouts = await this.env.APP_DB.prepare(
-      `
-      SELECT * FROM company_calendar 
-      WHERE event_type = 'blackout' 
-      AND (
-        (start_date BETWEEN ? AND ?) OR 
-        (end_date BETWEEN ? AND ?) OR
-        (? BETWEEN start_date AND end_date) OR
-        (? BETWEEN start_date AND end_date)
-      )
-    `
-    )
-      .bind(startDate, endDate, startDate, endDate, startDate, endDate)
-      .all();
-
-    return {
-      has_conflict: blackouts.results.length > 0,
-      conflicting_periods: blackouts.results
-    };
-  }
-
-  private async validatePTOPolicy(params: PTOValidationParams) {
-    // Implementation from earlier policy engine
-    // (See Policy Validation Tools section)
-    return await this.policyEngine.validatePTO(params);
-  }
-
-  private async submitPTORequest(params: any) {
-    const requestId = crypto.randomUUID();
-
-    await this.env.APP_DB.prepare(
-      `
-      INSERT INTO pto_requests (
-        id, employee_id, manager_id, start_date, end_date,
-        total_days, reason, status, approval_type, ai_validation_notes,
-        balance_before, balance_after, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-    )
-      .bind(
-        requestId,
-        params.employee_id,
-        params.manager_id || null,
-        params.start_date,
-        params.end_date,
-        params.total_days,
-        params.reason || "",
-        params.status,
-        params.approval_type,
-        params.validation_notes || "",
-        params.balance_before || null,
-        params.balance_after || null,
-        Date.now()
-      )
-      .run();
-
-    // If auto-approved, update balance immediately
-    if (params.status === "auto_approved") {
-      await this.updatePTOBalance({
-        employee_id: params.employee_id,
-        days_to_deduct: params.total_days,
-        request_id: requestId
-      });
-    }
-
-    return {
-      request_id: requestId,
-      status: params.status,
-      message: "Request submitted successfully"
-    };
-  }
-
-  // ... Additional tool implementations
-}
-````
-
----
-
-## Key Agentic Behaviors Demonstrated
-
-### 1. **Multi-Step Planning**
-
-The agent breaks down complex requests into sequential steps:
-
-```
-User: "Book me 5 days off next week"
-  ↓
-Agent Plans:
-  Step 1: Parse "next week" into specific dates
-  Step 2: Get user's employee level
-  Step 3: Calculate business days
-  Step 4: Check PTO balance
-  Step 5: Validate blackout periods
-  Step 6: Check auto-approval threshold
-  Step 7: Submit or escalate
-  Step 8: Respond to user
-```
-
-### 2. **Dynamic Adaptation**
-
-The agent adapts based on tool observations:
-
-```
-THOUGHT: "Check balance"
-ACTION: get_pto_balance()
-OBSERVATION: { balance: 2 days }
-THOUGHT: "Insufficient! User requested 5 days. I should deny and explain."
-ACTION: final_answer("You only have 2 days available...")
-```
-
-### 3. **Tool Chaining**
-
-The agent chains multiple tools to solve complex problems:
-
-```
-get_current_user()
-  → calculate_business_days()
-    → get_pto_balance()
-      → check_blackout_periods()
-        → validate_pto_policy()
-          → submit_pto_request()
-            → log_audit_event()
-```
-
-### 4. **Self-Reflection**
-
-The agent reflects on past actions to refine its approach:
-
-```
-THOUGHT: "My validation returned errors. I should not submit the request."
-ACTION: final_answer(explanation_of_violation)
-
-vs.
-
-THOUGHT: "Validation passed. Now I can submit."
-ACTION: submit_pto_request()
-```
-
-### 5. **Error Recovery**
-
-The agent handles tool failures gracefully:
-
-```
-ACTION: check_blackout_periods()
-OBSERVATION: { error: "Database timeout" }
-THOUGHT: "Tool failed. I'll retry or ask user to try later."
-ACTION: final_answer("I'm experiencing technical issues...")
-```
-
----
-
-## Success Metrics for Agentic Behavior
-
-| Metric                       | Target | Measurement                                 |
-| ---------------------------- | ------ | ------------------------------------------- |
-| **Tool Usage Rate**          | >80%   | Percentage of requests using ≥2 tools       |
-| **Multi-Step Planning**      | >60%   | Requests requiring 3+ sequential tool calls |
-| **Adaptive Decisions**       | >90%   | Correct routing (approve/deny/escalate)     |
-| **Handbook Search Accuracy** | >95%   | Correct policy retrieval from vector search |
-| **Error Recovery**           | >95%   | Graceful handling of tool failures          |
-| **Audit Compliance**         | 100%   | All actions logged to audit_log             |
-| **Response Accuracy**        | >95%   | Correct policy interpretation               |
-
----
-
-## Implementation Phases
-
-### Phase 1: Tool Infrastructure (Week 1)
-
-- [ ] Implement all 15+ agent tools
-- [ ] Build policy validation engine
-- [ ] Create tool registry and executor
-- [ ] Test each tool independently
-- [ ] Create Vectorize index and add ingestion tooling (use `upsert`) and batch ingestion logic
-- [ ] Validate Wrangler version (>=3.71.0) and ensure ai/vectorize bindings in `wrangler.jsonc`
-- [ ] Add basic ingest and RAG tests to validate search quality
-
-### Phase 2: ReAct Loop (Week 2)
-
-- [ ] Implement Thought-Action-Observation cycle
-- [ ] Build LLM prompt with tool descriptions
-- [ ] Add action parsing (JSON extraction)
-- [ ] Implement iteration limits and safety
-
-### Phase 3: Agent Intelligence (Week 3)
-
-- [ ] Add multi-step planning
-- [ ] Implement dynamic adaptation logic
-- [ ] Build error recovery mechanisms
-- [ ] Add conversation history integration
-
-### Phase 4: Testing & Refinement (Week 4)
-
-- [ ] Test complex multi-tool scenarios
-- [ ] Evaluate agentic behavior metrics
-- [ ] Optimize LLM prompts for reasoning
-- [ ] Add comprehensive logging
-
----
-
-## Technical Implementation Details
-
-### Prompt Engineering for ReAct
-
-**Key Techniques:**
-
-1. **Explicit Structure**: Define THOUGHT/ACTION/OBSERVATION markers
-2. **Few-Shot Examples**: Include 2-3 examples in system prompt
-3. **Tool Descriptions**: Detailed parameter specs with types
-4. **Step-by-Step Instruction**: "Let's think step by step" trigger
-5. **JSON Formatting**: Clear format requirements for actions
-
-### Safety Mechanisms
-
-1. **Iteration Limits**: Max 10 loops to prevent infinite reasoning
-2. **Timeout Protection**: 30-second max per tool call
-3. **Tool Whitelisting**: Only registered tools can be called
-4. **Parameter Validation**: Schema validation before execution
-5. **Audit Logging**: Every tool call logged for review
-
-### Performance Optimizations
-
-1. **Parallel Tool Calls**: When independent (future enhancement)
-2. **Caching**: Cache policy rules and user data
-3. **Streaming**: Stream final answer for perceived speed
-4. **Database Indexing**: Optimize queries with proper indexes
-
----
-
-## Vectorize Configuration for Employee Handbook
-
-### Setup Steps
-
-1. **Create Vectorize Index**:
-
-   ```bash
-   npx wrangler vectorize create handbook_vectors --dimensions=768 --metric=cosine
-   ```
-
-2. **Configure in wrangler.jsonc**:
-
-   ```jsonc
-   {
-     "vectorize": [
-       {
-         "binding": "HANDBOOK_VECTORS",
-         "index_name": "handbook_vectors"
-       }
-     ]
-   }
-   ```
-
-3. **Populate Handbook Data**:
-   - Chunk the employee handbook into sections
-   - Generate embeddings using `@cf/baai/bge-base-en-v1.5`
-   - Insert vectors with metadata (section, category, last_updated)
-
-### Caveats & Improvements for Vectorize
-
-These recommendations ensure robustness and compatibility when setting up Vectorize for the employee handbook.
-
-- **Wrangler version**: Vectorize V2 requires Wrangler 3.71.0 or later. Use `npx wrangler@latest` or `npx wrangler vectorize` to keep tools up to date before creating indexes.
-- **Model & Dimensions are fixed**: Set `--dimensions=768` for `@cf/baai/bge-base-en-v1.5`. Confirm model output dimensions by logging the embedding shape for a sample chunk before upserting vectors.
-- **V2 vs legacy V1**: Do not create legacy Vectorize V1 indexes; they are deprecated. Use V2 and avoid `--deprecated-v1` unless explicitly migrating.
-- **Use `upsert`, not `insert`**: Use `env.HANDBOOK_VECTORS.upsert([...])` in ingestion scripts so re-run ingestions update vectors safely.
-- **Batch processing**: For larger handbooks, process chunks in batches (e.g., 100 vectors per batch) to avoid timeouts and throttling. Also, consider adding exponential backoff retries for transient errors.
-- **Metadata and filtering**: Store useful metadata (`section`, `category`, `last_updated`, `source_id`) and rely on Vectorize filtering to narrow results for policy queries.
-- **Caching & idempotency**: Store precomputed embeddings in KV or R2 if handbook updates are infrequent; this avoids re-generating embeddings on each run and is easier to re-ingest.
-- **Observability & Limits**: Vectorize and Workers AI have quotas; monitor index size, query rates, and storage. Track embedding insertion counts and query latencies with Workers Analytics Engine.
-- **Error handling**: Wrap `AI.run`, `VECTORIZE.upsert` and `query` calls in try/catch. Log failures and retry when appropriate.
-- **Testing & validation**: Add a post-ingest validation step that runs sample queries and asserts top-K results meet expected scores (cosine ~ 0.8+ for close matches) and that the correct handbook sections are returned.
-
-### Example: Batch upsert with error handling
-
-```typescript
-// In a migration script or setup worker
-async function populateHandbookVectors(env: Env, chunks: HandbookEntry[]) {
-  const CHUNK_SIZE = 100; // safe batch size
-  const modelName = "@cf/baai/bge-base-en-v1.5"; // 768 dims
-
-  for (let i = 0; i < chunks.length; i += CHUNK_SIZE) {
-    const batch = chunks.slice(i, i + CHUNK_SIZE);
-    try {
-      // Generate embeddings in a single run call: pass an array of strings
-      const inputs = batch.map((b) => b.content);
-      const modelResp = await env.AI.run(modelName, { text: inputs });
-
-      const vectors: VectorizeVector[] = modelResp.data[0].map(
-        (vector, idx) => ({
-          id: batch[idx].id,
-          values: vector,
-          metadata: batch[idx].metadata
-        })
-      );
-
-      // Use upsert to handle new and updated vectors safely
-      const inserted = await env.HANDBOOK_VECTORS.upsert(vectors);
-      console.log(
-        `Inserted batch ${i / CHUNK_SIZE} - ${inserted.count || "ok"}`
-      );
-    } catch (err) {
-      // Basic retry/backoff or log and continue
-      console.error(`Vectorize upsert batch failed: ${err}`);
-      // Optionally retry with backoff or push failed batch to a queue for retry
-    }
-  }
-  // Optionally validate top-K results after ingestion
-}
-```
-
-### Validation & Post-Ingest Tests
-
-- Add a test route to run sample queries against `env.HANDBOOK_VECTORS.query()` after ingestion.
-- Assert that top matches return expected `metadata.section` and reasonable `score` thresholds.
-- Keep a small suite of RAG tests to ensure handbook updates do not break retrieval logic.
-
-#### Example: Query & assert top match
-
-```typescript
-async function validateSampleQuery(
-  env: Env,
-  query: string,
-  expectedSection: string
-) {
-  const queryVector = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [query]
-  });
-  const matches = await env.HANDBOOK_VECTORS.query(queryVector.data[0], {
-    topK: 3,
-    filter: { category: "pto" }, // narrow scope
-    returnMetadata: true
-  });
-
-  const top = matches.matches?.[0];
-  if (!top) throw new Error("No matches returned");
-  console.assert(
-    top.metadata.section === expectedSection,
-    `Expected ${expectedSection}, got ${top.metadata.section}`
-  );
-  console.log(
-    `Validation passed: found ${top.metadata.section} with score ${top.score}`
-  );
-}
-```
-
-### Wrangler & Binding Notes
-
-- In `wrangler.jsonc`, include `vectorize` and `ai` bindings and set `compatibility_date` and `compatibility_flags`. For example:
-
-```jsonc
-{
-  "name": "approvalflow-ai",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-02-11",
-  "compatibility_flags": ["nodejs_compat"],
-  "vectorize": [
-    { "binding": "HANDBOOK_VECTORS", "index_name": "handbook_vectors" }
-  ],
-  "ai": { "binding": "AI" },
-  "observability": { "enabled": true, "head_sampling_rate": 1 }
-}
-```
-
-Note: Don't commit API keys into source; save them as environment variables.
-
-### Additional Implementation Notes (copilot/instructions alignment)
-
-- **TypeScript & module format**: Keep Worker code in TypeScript (ES modules), `src/index.ts` as the default main, and use a single file for the Worker by default. Align with the repo code standards. Avoid native FFI dependencies.
-- **Compatibility & Observability**: Set `compatibility_date = "2025-02-11"` and `compatibility_flags = ["nodejs_compat"]`. Ensure `observability.enabled = true` and `head_sampling_rate` as required by the observability policy.
-- **Use managed bindings only**: Add Vectorize, AI, and Durable Object bindings as needed and follow least privilege approach for these bindings.
-- **Migrations**: When using Agents and Durable Objects, include `migrations[].new_sqlite_classes` in `wrangler.jsonc` for agent state persistence.
-
-### Example: Migrations section for Agents (wrangler.jsonc)
-
-```jsonc
-"migrations": [
-  {
-    "tag": "v1",
-    "new_sqlite_classes": ["AIAgent"]
-  }
-]
-```
-
-- **Secrets**: Use environment variables for API keys and guard them via Wrangler secrets in production; do not commit secrets to source control.
-- **Scheduled re-ingestion**: Add a scheduled Worker or Queue/Tariff job (Cloudflare Queues or Cron Trigger) to re-ingest changed handbook content, and add an idempotent ingestion process using `upsert`.
-- **Retries and rate-limiting**: Add simple retry logic with exponential backoff for `AI.run` and `VECTORIZE.upsert` to handle transient errors and rate limits.
-
-### CLI & Testing Guidelines
-
-- **Validate Wrangler version**: Run `npx wrangler@latest --version` and `npx wrangler vectorize --help` to validate CLI compatibility.
-- **Basic curl checks**: After deployment, use the following quick checks to validate ingestion and queries.
-
-Insert vectors (POST /insert)
-
-```bash
-curl -X POST 'https://<your_worker>.workers.dev/insert' \
-  -H 'Content-Type: application/json' \
-  -d '{"chunks": [{"id":"chunk-1","content":"hello world","metadata":{"section":"intro","category":"general","last_updated":"2025-01-01"}}] }'
-```
-
-Query index (GET /?q=...)
-
-```bash
-curl 'https://<your_worker>.workers.dev/?q=PTO+approval'
-```
-
-### Handbook Data Structure
-
-```typescript
-interface HandbookEntry {
-  id: string;
-  content: string; // Text chunk from handbook
-  vector: number[]; // 768-dimensional embedding
-  metadata: {
-    section: string; // e.g., "Time Off Policy", "Expense Reimbursement"
-    category: string; // "pto", "expenses", "benefits", "general"
-    last_updated: string; // ISO date
-    page_number?: number;
-  };
-}
-```
-
-### Example Handbook Ingestion
-
-```typescript
-// In a migration script or setup worker
-async function populateHandbookVectors(env: Env) {
-  const handbookChunks = [
-    {
-      content:
-        "Junior employees accrue 1.5 days of PTO per month and can have requests up to 3 business days auto-approved.",
-      metadata: {
-        section: "Time Off Policy",
-        category: "pto",
-        last_updated: "2025-01-15"
-      }
-    },
-    {
-      content:
-        "Expense reimbursements over $75 require receipts. Junior employees can have expenses up to $100 auto-approved.",
-      metadata: {
-        section: "Expense Policy",
-        category: "expenses",
-        last_updated: "2025-01-15"
-      }
-    }
-    // ... more chunks
-  ];
-
-  for (const chunk of handbookChunks) {
-    // Generate embedding
-    const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-      text: chunk.content
-    });
-
-    // Upsert into Vectorize (use upsert for idempotent re-ingestions)
-    // For small handbooks a single upsert is fine; for large handbooks use the batch ingestion helper above.
-    await env.HANDBOOK_VECTORS.upsert([
-      {
-        id: crypto.randomUUID(),
-        values: embedding.data[0],
-        metadata: chunk.metadata
-      }
-    ]);
-  }
-}
-```
-
-### Integration Benefits
-
-- **Dynamic Policies**: Agent always uses current handbook rules, not hardcoded values
-- **Explainability**: Agent can cite specific handbook sections in responses
-- **Maintainability**: Update policies by modifying handbook data, not code
-- **Accuracy**: Reduces hallucinations by grounding responses in real documents
-
----
-
-## Comparison: Agentic vs Non-Agentic
-
-| Aspect             | Non-Agentic (LLM Wrapper) | Agentic (ReAct Framework)     |
-| ------------------ | ------------------------- | ----------------------------- |
-| **Intelligence**   | Direct LLM → response     | Multi-step reasoning loop     |
-| **Tools**          | No external data access   | 15+ tools for real data       |
-| **Adaptability**   | Static responses          | Dynamic based on observations |
-| **Planning**       | Single-turn               | Multi-turn with planning      |
-| **Error Handling** | Fails silently            | Retries and explains          |
-| **Auditability**   | None                      | Full action log               |
-| **Accuracy**       | Hallucinates policies     | Queries real policy data      |
-
----
-
-## Next Steps
-
-1. **Set up Vectorize for Employee Handbook**:
-   - Create vector index for handbook
-   - Chunk and embed handbook content
-   - Test semantic search functionality
-
-- Ensure Wrangler version is >= 3.71.0 and validate `dimensions=768` during index creation
-- Add a quick validation test to assert top match quality after ingestion
-
-2. **Review this plan** with the team
-3. **Implement tool infrastructure** first (foundational)
-4. **Build ReAct loop** in Durable Object
-5. **Test with sample scenarios** (PTO requests)
-
-- Add scheduled re-ingestion & validation tests for handbook updates
-
-6. **Iterate on prompt engineering** for better reasoning
-7. **Add expense request support** (second use case)
-8. **Deploy and monitor** agentic behavior metrics
+## Comparison: Custom ReAct vs Cloudflare Agents SDK
+
+| Aspect             | Custom ReAct Implementation | Cloudflare Agents SDK         |
+| ------------------ | --------------------------- | ----------------------------- |
+| **Architecture**   | Manual THOUGHT-ACTION loop  | AI SDK with native tool calls |
+| **State**          | Custom Durable Storage      | Auto-persisted setState()     |
+| **Database**       | D1 binding required         | Embedded SQLite built-in      |
+| **Scheduling**     | Manual Alarms API           | Native schedule() method      |
+| **Client Sync**    | Custom WebSocket code       | useAgent hook auto-sync       |
+| **Type Safety**    | Manual interfaces           | Full TypeScript support       |
+| **Code Volume**    | ~500+ lines                 | ~200 lines                    |
+| **Learning Curve** | High (custom framework)     | Low (standard patterns)       |
+| **Maintenance**    | High                        | Low                           |
+| **Tool Calling**   | JSON parsing & validation   | AI SDK handles automatically  |
 
 ---
 
 ## References
 
-- [HuggingFace Agents Course - Thought-Action-Observation](https://huggingface.co/learn/agents-course/en/unit1/agent-steps-and-structure)
-- [HuggingFace - ReAct Framework](https://huggingface.co/learn/agents-course/en/unit1/thoughts)
-- [HuggingFace - Agent Actions](https://huggingface.co/learn/agents-course/en/unit1/actions)
+- [Cloudflare Agents SDK Documentation](https://developers.cloudflare.com/agents/)
+- [Agents SDK GitHub](https://github.com/cloudflare/agents-sdk)
+- [AI SDK Documentation](https://sdk.vercel.ai/docs)
 - [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/)
+- [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
+
