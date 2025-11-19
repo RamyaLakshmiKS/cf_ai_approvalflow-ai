@@ -12,13 +12,6 @@
     "binding": "AI",
     "remote": true
   },
-  "vectorize": [
-    {
-      "binding": "VECTORIZE",
-      "index_name": "handbook_vectors",
-      "remote": true
-    }
-  ],
   "assets": {
     "directory": "public"
   },
