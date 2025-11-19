@@ -1,9 +1,11 @@
 import handbookContent from "../docs/employee_handbook.md?raw";
 import { getHandbookSearchPrompt } from "./prompts";
+import { z } from "zod";
+import * as schemas from "./tools-schemas";
 
 /**
- * Tool Registry for Manual Tool Execution
- * Tools are defined with a custom Tool interface
+ * Tool Registry for AI SDK Tool Execution
+ * Tools are defined with zod schemas for type safety
  */
 
 // Tool execution context interface
@@ -12,15 +14,11 @@ export interface ToolContext {
   userId: string;
 }
 
-// Custom Tool type for manual tool execution
+// Custom Tool type for AI SDK tool execution
 export interface Tool {
   name: string;
   description: string;
-  parameters: {
-    type: "object";
-    properties: Record<string, unknown>;
-    required: string[];
-  };
+  parameters: z.ZodObject<any>;
   execute: (
     params: Record<string, unknown>,
     context: ToolContext
@@ -35,11 +33,7 @@ const get_current_user: Tool = {
   name: "get_current_user",
   description:
     "Retrieves the authenticated user's profile including ID, name, role, employee level, and manager. Use this first to understand who is making the request.",
-  parameters: {
-    type: "object",
-    properties: {},
-    required: []
-  },
+  parameters: schemas.getCurrentUserSchema,
   execute: async (_params: Record<string, unknown>, context: ToolContext) => {
     console.log("[TOOL] get_current_user called for userId:", context.userId);
     const user = await context.env.APP_DB.prepare(
@@ -69,17 +63,7 @@ const search_employee_handbook: Tool = {
   name: "search_employee_handbook",
   description:
     "Searches the employee handbook to find relevant policies and rules. Use this for any policy-related questions or validations about PTO, expenses, benefits, blackout periods, auto-approval limits, etc.",
-  parameters: {
-    type: "object",
-    properties: {
-      query: {
-        type: "string",
-        description:
-          "Natural language query about company policies (e.g., 'What are the PTO auto-approval limits?', 'What are the blackout periods?', 'What is the expense reimbursement policy?')"
-      }
-    },
-    required: ["query"]
-  },
+  parameters: schemas.searchEmployeeHandbookSchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { query } = params as { query: string };
     console.log("[TOOL] search_employee_handbook called with query:", query);
@@ -111,16 +95,7 @@ const get_pto_balance: Tool = {
   name: "get_pto_balance",
   description:
     "Retrieves the employee's current PTO balance, accrued days, used days, and rollover information.",
-  parameters: {
-    type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "The employee's ID (optional, defaults to current user)"
-      }
-    },
-    required: []
-  },
+  parameters: schemas.getPTOBalanceSchema,
   execute: async (params: { employee_id?: string }, context: ToolContext) => {
     const userId = params.employee_id || context.userId;
     console.log("[TOOL] get_pto_balance called for employee:", userId);
@@ -161,20 +136,7 @@ const check_blackout_periods: Tool = {
   name: "check_blackout_periods",
   description:
     "Checks if the requested dates overlap with company blackout periods (fiscal quarter ends, holidays). Use this to validate PTO requests.",
-  parameters: {
-    type: "object",
-    properties: {
-      start_date: {
-        type: "string",
-        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      end_date: {
-        type: "string",
-        description: "End date in ISO 8601 format (YYYY-MM-DD)"
-      }
-    },
-    required: ["start_date", "end_date"]
-  },
+  parameters: schemas.checkBlackoutPeriodsSchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { start_date, end_date } = params as {
       start_date: string;
@@ -218,25 +180,7 @@ const get_pto_history: Tool = {
   name: "get_pto_history",
   description:
     "Retrieves past PTO requests for the employee, including approved, denied, and pending requests.",
-  parameters: {
-    type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
-      limit: {
-        type: "number",
-        description: "Maximum number of records to return (default: 10)"
-      },
-      status_filter: {
-        type: "string",
-        description: "Filter by status: approved, denied, pending, or all",
-        enum: ["approved", "denied", "pending", "all"]
-      }
-    },
-    required: []
-  },
+  parameters: schemas.getPTOHistorySchema,
   execute: async (
     params: { employee_id?: string; limit?: number; status_filter?: string },
     context: ToolContext
@@ -281,20 +225,7 @@ const calculate_business_days: Tool = {
   name: "calculate_business_days",
   description:
     "Calculates the number of business days (excluding weekends and holidays) between two dates. Use this to determine the actual PTO days needed.",
-  parameters: {
-    type: "object",
-    properties: {
-      start_date: {
-        type: "string",
-        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      end_date: {
-        type: "string",
-        description: "End date in ISO 8601 format (YYYY-MM-DD)"
-      }
-    },
-    required: ["start_date", "end_date"]
-  },
+  parameters: schemas.calculateBusinessDaysSchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { start_date, end_date } = params as {
       start_date: string;
@@ -361,28 +292,7 @@ const validate_pto_policy: Tool = {
   name: "validate_pto_policy",
   description:
     "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request.",
-  parameters: {
-    type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID"
-      },
-      start_date: {
-        type: "string",
-        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      end_date: {
-        type: "string",
-        description: "End date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      reason: {
-        type: "string",
-        description: "Reason for PTO request (optional)"
-      }
-    },
-    required: ["employee_id", "start_date", "end_date"]
-  },
+  parameters: schemas.validatePTOPolicySchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { employee_id, start_date, end_date } = params as {
       employee_id: string;
@@ -507,53 +417,7 @@ const submit_pto_request: Tool = {
   name: "submit_pto_request",
   description:
     "Submits a PTO request to the database after validation. Sets status based on auto-approval or escalation. Only use this AFTER validating with validate_pto_policy.",
-  parameters: {
-    type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID"
-      },
-      start_date: {
-        type: "string",
-        description: "Start date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      end_date: {
-        type: "string",
-        description: "End date in ISO 8601 format (YYYY-MM-DD)"
-      },
-      total_days: {
-        type: "number",
-        description: "Total business days requested"
-      },
-      reason: {
-        type: "string",
-        description: "Reason for PTO request"
-      },
-      status: {
-        type: "string",
-        description: "Status of the request",
-        enum: ["auto_approved", "pending", "denied"]
-      },
-      approval_type: {
-        type: "string",
-        description: "Type of approval",
-        enum: ["auto", "manual"]
-      },
-      validation_notes: {
-        type: "string",
-        description: "Notes from validation process"
-      }
-    },
-    required: [
-      "employee_id",
-      "start_date",
-      "end_date",
-      "total_days",
-      "status",
-      "approval_type"
-    ]
-  },
+  parameters: schemas.submitPTORequestSchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const {
       employee_id,
@@ -657,30 +521,7 @@ const log_audit_event: Tool = {
   name: "log_audit_event",
   description:
     "Logs an action to the audit trail for compliance and tracking. Use this for all significant actions.",
-  parameters: {
-    type: "object",
-    properties: {
-      entity_type: {
-        type: "string",
-        description:
-          "Type of entity (e.g., 'pto_request', 'expense_request', 'user')"
-      },
-      entity_id: {
-        type: "string",
-        description: "ID of the entity"
-      },
-      action: {
-        type: "string",
-        description:
-          "Action performed (e.g., 'created', 'approved', 'denied', 'updated')"
-      },
-      details: {
-        type: "object",
-        description: "Additional details about the action (optional)"
-      }
-    },
-    required: ["entity_type", "entity_id", "action"]
-  },
+  parameters: schemas.logAuditEventSchema,
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { entity_type, entity_id, action, details } = params as {
       entity_type: string;

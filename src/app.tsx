@@ -1,6 +1,5 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
 
-import type { UIMessage } from "@ai-sdk/react";
 // Icon imports
 import {
   Bug,
@@ -8,14 +7,10 @@ import {
   PaperPlaneTilt,
   Robot,
   SignOut,
-  Stop,
   Sun,
   Trash,
   User
 } from "@phosphor-icons/react";
-import { useAgentChat } from "agents/ai-react";
-import { useAgent } from "agents/react";
-import { isToolUIPart } from "ai";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { Login } from "@/components/auth/Login";
 import { Avatar } from "@/components/avatar/Avatar";
@@ -27,13 +22,14 @@ import { Loader } from "@/components/loader/Loader";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { Textarea } from "@/components/textarea/Textarea";
 import { Toggle } from "@/components/toggle/Toggle";
-import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
 import { useAuthContext } from "@/providers/AuthProvider";
-import type { tools } from "./tools";
 
-// List of tools that require human confirmation
-// NOTE: this should match the tools that don't have execute functions in tools.ts
-const toolsRequiringConfirmation: (keyof typeof tools)[] = [];
+// Simple message type for our agent
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+}
 
 function ChatInterface() {
   const { logout, user } = useAuthContext();
@@ -76,70 +72,94 @@ function ChatInterface() {
     setTheme(newTheme);
   };
 
-  const agent = useAgent({
-    agent: "chat"
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [agentInput, setAgentInput] = useState("");
-  const handleAgentInputChange = (
+  const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    setAgentInput(e.target.value);
-    console.log("[UI] Input changed, length:", e.target.value.length);
+    setInput(e.target.value);
   };
 
-  const handleAgentSubmit = async (
-    e: React.FormEvent,
-    extraData: Record<string, unknown> = {}
-  ) => {
-    e.preventDefault();
-    if (!agentInput.trim()) return;
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim() || isLoading) return;
 
-    const message = agentInput;
-    console.log("[UI] User submitting message:", message);
-    setAgentInput("");
+    const userMessage: Message = {
+      role: "user",
+      content: messageText,
+      timestamp: Date.now()
+    };
 
-    // Send message to agent
-    await sendMessage(
-      {
-        role: "user",
-        parts: [{ type: "text", text: message }]
-      },
-      {
-        body: { ...extraData, user }
+    // Add user message to UI immediately
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      console.log("[UI] Sending message to agent:", messageText);
+
+      // Send to our agent endpoint
+      const response = await fetch(
+        `/agents/chat/${user?.username || "default"}/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: messageText }),
+          credentials: "include"
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Agent error: ${response.statusText}`);
       }
-    );
-    console.log("[UI] Message sent to agent");
+
+      const data = (await response.json()) as {
+        response: string;
+        toolExecutions?: Array<{ tool: string; result: unknown }>;
+      };
+
+      console.log("[UI] Got response from agent");
+      if (data.toolExecutions) {
+        console.log("[UI] Tool executions:", data.toolExecutions.length);
+      }
+
+      // Add assistant message
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.response,
+        timestamp: Date.now()
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("[UI] Error sending message:", error);
+      const errorMessage: Message = {
+        role: "assistant",
+        content: "Sorry, I encountered an error processing your request.",
+        timestamp: Date.now()
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const {
-    messages: agentMessages,
-    addToolResult,
-    clearHistory,
-    status,
-    sendMessage,
-    stop
-  } = useAgentChat<unknown, UIMessage<{ createdAt: string }>>({
-    agent
-  });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendMessage(input);
+  };
+
+  const clearHistory = () => {
+    setMessages([]);
+    console.log("[UI] Chat history cleared");
+  };
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    console.log("[UI] Message count:", agentMessages.length);
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
-
-  const pendingToolCallConfirmation = agentMessages.some((m: UIMessage) =>
-    m.parts?.some(
-      (part) =>
-        isToolUIPart(part) &&
-        part.state === "input-available" &&
-        // Manual check inside the component
-        toolsRequiringConfirmation.includes(
-          part.type.replace("tool-", "") as keyof typeof tools
-        )
-    )
-  );
+    console.log("[UI] Message count:", messages.length);
+    messages.length > 0 && scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -233,7 +253,7 @@ function ChatInterface() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
-          {agentMessages.length === 0 && (
+          {messages.length === 0 && (
             <div className="h-full flex items-center justify-center">
               <Card className="p-6 max-w-lg mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
@@ -264,13 +284,13 @@ function ChatInterface() {
             </div>
           )}
 
-          {agentMessages.map((m, index) => {
+          {messages.map((m, index) => {
             const isUser = m.role === "user";
             const showAvatar =
-              index === 0 || agentMessages[index - 1]?.role !== m.role;
+              index === 0 || messages[index - 1]?.role !== m.role;
 
             return (
-              <div key={m.id}>
+              <div key={m.timestamp}>
                 {showDebug && (
                   <pre className="text-xs text-muted-foreground overflow-scroll">
                     {JSON.stringify(m, null, 2)}
@@ -291,94 +311,25 @@ function ChatInterface() {
                     )}
 
                     <div>
-                      <div>
-                        {m.parts?.map((part, i) => {
-                          if (part.type === "text") {
-                            return (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
-                              <div key={i}>
-                                <Card
-                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
-                                    isUser
-                                      ? "rounded-br-none"
-                                      : "rounded-bl-none border-assistant-border"
-                                  } ${
-                                    part.text.startsWith("scheduled message")
-                                      ? "border-accent/50"
-                                      : ""
-                                  } relative`}
-                                >
-                                  {part.text.startsWith(
-                                    "scheduled message"
-                                  ) && (
-                                    <span className="absolute -top-3 -left-2 text-base">
-                                      🕒
-                                    </span>
-                                  )}
-                                  <MemoizedMarkdown
-                                    id={`${m.id}-${i}`}
-                                    content={part.text.replace(
-                                      /^scheduled message: /,
-                                      ""
-                                    )}
-                                  />
-                                </Card>
-                                <p
-                                  className={`text-xs text-muted-foreground mt-1 ${
-                                    isUser ? "text-right" : "text-left"
-                                  }`}
-                                >
-                                  {formatTime(
-                                    m.metadata?.createdAt
-                                      ? new Date(m.metadata.createdAt)
-                                      : new Date()
-                                  )}
-                                </p>
-                              </div>
-                            );
-                          }
-
-                          if (
-                            isToolUIPart(part) &&
-                            m.id.startsWith("assistant")
-                          ) {
-                            const toolCallId = part.toolCallId;
-                            const toolName = part.type.replace("tool-", "");
-                            const needsConfirmation =
-                              toolsRequiringConfirmation.includes(
-                                toolName as keyof typeof tools
-                              );
-
-                            // Skip rendering the card in debug mode
-                            if (showDebug) return null;
-
-                            return (
-                              <ToolInvocationCard
-                                // biome-ignore lint/suspicious/noArrayIndexKey: using index is safe here as the array is static
-                                key={`${toolCallId}-${i}`}
-                                toolUIPart={part}
-                                toolCallId={toolCallId}
-                                needsConfirmation={needsConfirmation}
-                                onSubmit={({ toolCallId, result }) => {
-                                  addToolResult({
-                                    tool: part.type.replace("tool-", ""),
-                                    toolCallId,
-                                    output: result
-                                  });
-                                }}
-                                addToolResult={(toolCallId, result) => {
-                                  addToolResult({
-                                    tool: part.type.replace("tool-", ""),
-                                    toolCallId,
-                                    output: result
-                                  });
-                                }}
-                              />
-                            );
-                          }
-                          return null;
-                        })}
-                      </div>
+                      <Card
+                        className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
+                          isUser
+                            ? "rounded-br-none"
+                            : "rounded-bl-none border-assistant-border"
+                        }`}
+                      >
+                        <MemoizedMarkdown
+                          id={`msg-${m.timestamp}`}
+                          content={m.content}
+                        />
+                      </Card>
+                      <p
+                        className={`text-xs text-muted-foreground mt-1 ${
+                          isUser ? "text-right" : "text-left"
+                        }`}
+                      >
+                        {formatTime(new Date(m.timestamp))}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -390,34 +341,25 @@ function ChatInterface() {
 
         {/* Input Area */}
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleAgentSubmit(e, {
-              annotations: {
-                hello: "world"
-              }
-            });
-            setTextareaHeight("auto"); // Reset height after submission
-          }}
+          onSubmit={handleSubmit}
           className="p-3 bg-neutral-50 absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900"
         >
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
               <Textarea
-                disabled={pendingToolCallConfirmation}
+                disabled={isLoading}
                 placeholder={
-                  pendingToolCallConfirmation
-                    ? "Please respond to the tool confirmation above..."
-                    : "Send a message..."
+                  isLoading ? "Waiting for response..." : "Send a message..."
                 }
                 className="flex w-full border border-neutral-200 dark:border-neutral-700 px-3 py-2  ring-offset-background placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base pb-10 dark:bg-neutral-900"
-                value={agentInput}
+                value={input}
                 onChange={(e) => {
-                  handleAgentInputChange(e);
+                  handleInputChange(e);
                   // Auto-resize the textarea
                   e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                  setTextareaHeight(`${e.target.scrollHeight}px`);
+                  const newHeight = `${e.target.scrollHeight}px`;
+                  e.target.style.height = newHeight;
+                  setTextareaHeight(newHeight);
                 }}
                 onKeyDown={(e) => {
                   if (
@@ -426,33 +368,26 @@ function ChatInterface() {
                     !e.nativeEvent.isComposing
                   ) {
                     e.preventDefault();
-                    handleAgentSubmit(e as unknown as React.FormEvent);
-                    setTextareaHeight("auto"); // Reset height on Enter submission
+                    handleSubmit(e as unknown as React.FormEvent);
+                    setTextareaHeight("auto");
                   }
                 }}
                 rows={2}
                 style={{ height: textareaHeight }}
               />
               <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
-                {status === "submitted" || status === "streaming" ? (
-                  <button
-                    type="button"
-                    onClick={stop}
-                    className="inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full p-1.5 h-fit border border-neutral-200 dark:border-neutral-800"
-                    aria-label="Stop generation"
-                  >
-                    <Stop size={16} />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full p-1.5 h-fit border border-neutral-200 dark:border-neutral-800"
-                    disabled={pendingToolCallConfirmation || !agentInput.trim()}
-                    aria-label="Send message"
-                  >
+                <button
+                  type="submit"
+                  className="inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full p-1.5 h-fit border border-neutral-200 dark:border-neutral-800"
+                  disabled={isLoading || !input.trim()}
+                  aria-label="Send message"
+                >
+                  {isLoading ? (
+                    <Loader size={16} />
+                  ) : (
                     <PaperPlaneTilt size={16} />
-                  </button>
-                )}
+                  )}
+                </button>
               </div>
             </div>
           </div>
