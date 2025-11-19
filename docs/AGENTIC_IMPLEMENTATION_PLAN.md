@@ -88,9 +88,9 @@ The agent demonstrates autonomy, multi-step problem solving, state persistence, 
 **Cloudflare Services Integration:**
 
 - **Agents SDK**: Base Agent and AIChatAgent classes with state, SQL, and scheduling
-- **Vectorize**: Semantic search of employee handbook for policy rules
+- **Employee Handbook**: Static markdown file loaded into LLM context for policy queries
 - **D1 Database**: Optional external relational data (can use Agent SQL instead)
-- **Workers AI**: LLM reasoning and response generation
+- **Workers AI / OpenAI**: LLM reasoning, response generation, and handbook analysis
 - **Durable Objects**: Underlying infrastructure (Agent extends DO)
 
 ---
@@ -166,51 +166,73 @@ private async getCurrentUser(): Promise<UserProfile> {
 ```typescript
 // Exposed as a tool to AI models
 const searchHandbookTool = {
-  description: "Searches the employee handbook using semantic search to find relevant policies and rules. Use this for any policy-related questions or validations.",
+  description: "Searches the employee handbook to find relevant policies and rules. Use this for any policy-related questions or validations.",
   parameters: z.object({
     query: z.string().describe("Natural language query about company policies"),
-    category: z.enum(["pto", "expenses", "benefits", "general"]).optional(),
-    topK: z.number().default(5)
+    category: z.enum(["pto", "expenses", "benefits", "general"]).optional()
   }),
-  execute: async ({ query, category, topK }) => {
-    return await this.searchEmployeeHandbook(query, category, topK);
+  execute: async ({ query, category }) => {
+    return await this.searchEmployeeHandbook(query, category);
   }
 };
 
 // Implementation in Agent class
+private handbookContent: string; // Loaded on agent initialization
+
 private async searchEmployeeHandbook(
   query: string,
-  category?: string,
-  topK: number = 5
+  category?: string
 ) {
-  // Generate embedding using Workers AI binding
-  const queryEmbedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [query]
-  });
-
-  // Build Vectorize query
-  const vectorQuery: any = {
-    vector: queryEmbedding.data[0],
-    topK,
-    returnValues: true,
-    returnMetadata: "all"
-  };
-
-  if (category) {
-    vectorQuery.filter = { category };
+  // Load handbook content (cached in agent state)
+  if (!this.handbookContent) {
+    // In production, load from R2, KV, or bundle with worker
+    // For now, we'll assume it's loaded during agent initialization
+    this.handbookContent = await this.loadHandbookContent();
   }
 
-  // Search the handbook vector index
-  const results = await this.env.HANDBOOK_VECTORS.query(vectorQuery.vector, vectorQuery);
+  // Use LLM to extract relevant sections from handbook
+  const openai = createOpenAI({
+    apiKey: this.env.OPENAI_API_KEY,
+  });
+
+  const prompt = `You are a policy expert. Given the following employee handbook and a user query, extract and return ONLY the relevant policy sections that answer the query.
+
+# Employee Handbook
+${this.handbookContent}
+
+# User Query
+${query}${category ? `\nCategory: ${category}` : ''}
+
+# Instructions
+Extract and return the exact relevant sections from the handbook that answer this query. Include section titles and full policy text. If multiple sections are relevant, include all of them.`;
+
+  const result = await generateText({
+    model: openai("gpt-4-turbo"),
+    prompt,
+    temperature: 0.1 // Low temperature for factual extraction
+  });
 
   return {
-    results: results.matches.map(match => ({
-      content: match.values,
-      score: match.score,
-      metadata: match.metadata
-    })),
-    total_found: results.matches.length
+    relevant_sections: result.text,
+    query,
+    category
   };
+}
+
+private async loadHandbookContent(): Promise<string> {
+  // Option 1: Load from R2 bucket
+  // const object = await this.env.HANDBOOK_BUCKET.get('employee_handbook.md');
+  // return await object.text();
+  
+  // Option 2: Load from KV
+  // return await this.env.HANDBOOK_KV.get('employee_handbook', 'text');
+  
+  // Option 3: Bundle with worker (for small handbooks)
+  // import handbookContent from './employee_handbook.md';
+  // return handbookContent;
+  
+  // For now, return placeholder
+  return "Employee handbook content will be loaded here";
 }
 ```
 
@@ -601,7 +623,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 interface Env {
   // Cloudflare bindings
   AI: Ai;
-  HANDBOOK_VECTORS: VectorizeIndex;
+  HANDBOOK_BUCKET?: R2Bucket; // Optional: for R2 storage
+  HANDBOOK_KV?: KVNamespace; // Optional: for KV storage
   // Agent binding (auto-provided by Agents SDK)
   APPROVAL_AGENT: AgentNamespace<ApprovalAgent>;
   // Secrets
@@ -814,7 +837,7 @@ Current User Context:
 - Manager ID: ${this.state.managerId}
 
 Your Capabilities:
-1. **Search employee handbook** for current policies (ALWAYS do this before making policy decisions)
+1. **Query employee handbook** using LLM-based retrieval for current policies (ALWAYS do this before making policy decisions)
 2. **Check PTO balances** and validate requests
 3. **Calculate business days** excluding weekends/holidays
 4. **Validate policies** against handbook rules
@@ -822,13 +845,14 @@ Your Capabilities:
 6. **Schedule follow-ups** for pending requests
 
 Important Guidelines:
-- Always search the handbook first for policy information (don't guess)
+- Always query the handbook first for policy information (don't guess or hallucinate policies)
+- The handbook is provided as context - extract exact policy text, don't paraphrase
 - Be friendly, clear, and concise
 - For PTO requests:
   * Junior employees: auto-approve up to 3 days
   * Senior employees: auto-approve up to 10 days
   * Above limits: escalate to manager
-- Explain policy violations clearly
+- Explain policy violations clearly by citing specific handbook sections
 - Always confirm actions before executing
 
 Think step-by-step and use tools to gather accurate information.`;
@@ -849,34 +873,26 @@ Think step-by-step and use tools to gather accurate information.`;
   
   // Tool Implementation: Search Handbook
   private async searchEmployeeHandbook(query: string, category?: string) {
-    // Generate embedding
-    const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-      text: [query]
-    });
-    
-    // Query Vectorize
-    const vectorQuery: any = {
-      vector: embedding.data[0],
-      topK: 5,
-      returnValues: true,
-      returnMetadata: "all"
-    };
-    
-    if (category) {
-      vectorQuery.filter = { category };
+    // Load handbook if not cached
+    if (!this.handbookContent) {
+      this.handbookContent = await this.loadHandbookContent();
     }
-    
-    const results = await this.env.HANDBOOK_VECTORS.query(
-      vectorQuery.vector, 
-      vectorQuery
-    );
-    
+
+    // Use LLM to extract relevant sections
+    const openai = createOpenAI({
+      apiKey: this.env.OPENAI_API_KEY,
+    });
+
+    const result = await generateText({
+      model: openai("gpt-4-turbo"),
+      prompt: `Extract relevant policy sections from this handbook:\n\n${this.handbookContent}\n\nQuery: ${query}\nCategory: ${category || 'any'}`,
+      temperature: 0.1
+    });
+
     return {
-      results: results.matches.map(m => ({
-        content: m.values,
-        score: m.score,
-        metadata: m.metadata
-      }))
+      relevant_sections: result.text,
+      query,
+      category
     };
   }
   
@@ -1095,15 +1111,20 @@ export default {
     }
   ],
   
-  "vectorize": [
+  "r2_buckets": [
     {
-      "binding": "HANDBOOK_VECTORS",
-      "index_name": "handbook_vectors"
+      "binding": "HANDBOOK_BUCKET",
+      "bucket_name": "employee-handbook",
+      "preview_bucket_name": "employee-handbook-preview"
     }
   ],
   
   "ai": {
     "binding": "AI"
+  },
+  
+  "vars": {
+    "HANDBOOK_PATH": "docs/employee_handbook.md"
   },
   
   "observability": {
@@ -1309,16 +1330,16 @@ onStateUpdate: (newState) => {
 
 - [ ] Set up Cloudflare Agents SDK project structure
 - [ ] Configure Durable Objects bindings for Agent
-- [ ] Set up Vectorize index for employee handbook
+- [ ] Load employee handbook into R2 bucket or bundle with worker
 - [ ] Implement Agent class with basic lifecycle methods
 - [ ] Add embedded SQL schema migrations
 - [ ] Create Wrangler configuration with proper bindings
-- [ ] Validate Wrangler version (>=3.71.0)
+- [ ] Test handbook loading and LLM-based retrieval
 
 ### Phase 2: Tool Implementation (Week 2)
 
 - [ ] Implement core tool methods (getCurrentUser, getPTOBalance, etc.)
-- [ ] Add Vectorize integration for handbook search
+- [ ] Build LLM-based handbook query method
 - [ ] Build policy validation engine
 - [ ] Implement business days calculation with holidays
 - [ ] Add audit logging to agent SQL
@@ -1444,90 +1465,139 @@ const result = await generateText({
 
 ---
 
-## Vectorize Configuration for Employee Handbook
+## Employee Handbook Loading & LLM-Based Retrieval
 
-### Setup Steps
+### Approach
 
-1. **Create Vectorize Index**:
+Instead of using vector embeddings and semantic search, we use the LLM directly to extract relevant policy information from the handbook. This approach:
 
-   ```bash
-   npx wrangler vectorize create handbook_vectors --dimensions=768 --metric=cosine
-   ```
+- **Simpler**: No vector database setup or embedding generation
+- **Faster to implement**: Just load markdown file and pass to LLM
+- **Accurate**: Modern LLMs excel at information extraction from documents
+- **Cost-effective**: No separate embedding costs
 
-2. **Configure in wrangler.jsonc**:
+### Setup Options
 
-   ```jsonc
-   {
-     "vectorize": [
-       {
-         "binding": "HANDBOOK_VECTORS",
-         "index_name": "handbook_vectors"
-       }
-     ]
-   }
-   ```
-
-3. **Populate Handbook Data**:
-   - Chunk the employee handbook into sections
-   - Generate embeddings using `@cf/baai/bge-base-en-v1.5`
-   - Insert vectors with metadata (section, category, last_updated)
-
-### Caveats & Best Practices
-
-- **Wrangler version**: Requires Wrangler 3.71.0+ for Vectorize V2
-- **Model dimensions**: Use 768 dimensions for `@cf/baai/bge-base-en-v1.5`
-- **Use `upsert`**: For idempotent re-ingestions
-- **Batch processing**: Process in batches of 100 vectors to avoid timeouts
-- **Metadata filtering**: Store and filter by `category`, `section`, `last_updated`
-- **Error handling**: Wrap operations in try/catch with retry logic
-- **Testing**: Add validation queries after ingestion
-
-### Example Ingestion
+#### Option 1: Bundle with Worker (Recommended for small handbooks)
 
 ```typescript
-async function populateHandbookVectors(env: Env, chunks: HandbookChunk[]) {
-  const BATCH_SIZE = 100;
-  const model = "@cf/baai/bge-base-en-v1.5";
+// src/employee_handbook.ts
+export const EMPLOYEE_HANDBOOK = `
+# Cloudflare Employee Handbook
+...
+`;
 
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE);
-    
-    try {
-      // Generate embeddings
-      const texts = batch.map(c => c.content);
-      const embeddingResp = await env.AI.run(model, { text: texts });
-      
-      // Prepare vectors
-      const vectors = embeddingResp.data[0].map((vector, idx) => ({
-        id: batch[idx].id,
-        values: vector,
-        metadata: batch[idx].metadata
-      }));
-      
-      // Upsert to Vectorize
-      await env.HANDBOOK_VECTORS.upsert(vectors);
-      console.log(`Inserted batch ${i / BATCH_SIZE + 1}`);
-      
-    } catch (err) {
-      console.error(`Failed to insert batch:`, err);
-      // Implement retry logic here
-    }
-  }
+// In agent class
+import { EMPLOYEE_HANDBOOK } from './employee_handbook';
+
+private handbookContent = EMPLOYEE_HANDBOOK;
+```
+
+#### Option 2: Store in R2 Bucket (Recommended for larger handbooks)
+
+```bash
+# Upload handbook to R2
+wrangler r2 object put employee-handbook/handbook.md --file=docs/employee_handbook.md
+```
+
+```typescript
+// In agent class
+private async loadHandbookContent(): Promise<string> {
+  const object = await this.env.HANDBOOK_BUCKET.get('handbook.md');
+  if (!object) throw new Error('Handbook not found');
+  return await object.text();
 }
 ```
 
-### Handbook Data Structure
+#### Option 3: Store in Workers KV (Alternative)
+
+```bash
+# Upload to KV
+wrangler kv:key put --binding=HANDBOOK_KV "employee_handbook" --path=docs/employee_handbook.md
+```
 
 ```typescript
-interface HandbookChunk {
-  id: string;
-  content: string; // Text chunk
-  metadata: {
-    section: string; // "Time Off Policy", "Expense Reimbursement"
-    category: "pto" | "expenses" | "benefits" | "general";
-    last_updated: string; // ISO date
-    page_number?: number;
+private async loadHandbookContent(): Promise<string> {
+  const content = await this.env.HANDBOOK_KV.get('employee_handbook', 'text');
+  if (!content) throw new Error('Handbook not found');
+  return content;
+}
+```
+
+### LLM-Based Policy Extraction
+
+```typescript
+private async searchEmployeeHandbook(query: string, category?: string) {
+  // Cache handbook in agent state for performance
+  if (!this.handbookContent) {
+    this.handbookContent = await this.loadHandbookContent();
+  }
+
+  const openai = createOpenAI({ apiKey: this.env.OPENAI_API_KEY });
+
+  const result = await generateText({
+    model: openai("gpt-4-turbo"),
+    prompt: `You are a policy expert. Extract relevant sections from this handbook:
+
+${this.handbookContent}
+
+Query: ${query}
+Category: ${category || 'any'}
+
+Return ONLY the exact policy text that answers the query. Include section titles.`,
+    temperature: 0.1 // Low temperature for factual extraction
+  });
+
+  return {
+    relevant_sections: result.text,
+    query,
+    category
   };
+}
+```
+
+### Performance Optimization
+
+1. **Cache handbook in agent state**: Load once per agent instance
+2. **Use streaming for long handbooks**: Stream LLM response for better UX
+3. **Implement handbook versioning**: Store version in agent state to detect updates
+
+```typescript
+interface AgentState {
+  // ... other state
+  handbookVersion?: string;
+  handbookLastLoaded?: number;
+}
+
+// Reload if handbook updated
+if (this.shouldReloadHandbook()) {
+  this.handbookContent = await this.loadHandbookContent();
+  this.setState({
+    ...this.state,
+    handbookVersion: '2025-01-15',
+    handbookLastLoaded: Date.now()
+  });
+}
+```
+
+### Configuration
+
+```jsonc
+// wrangler.jsonc
+{
+  "r2_buckets": [
+    {
+      "binding": "HANDBOOK_BUCKET",
+      "bucket_name": "employee-handbook"
+    }
+  ],
+  // OR for KV
+  "kv_namespaces": [
+    {
+      "binding": "HANDBOOK_KV",
+      "id": "your-kv-namespace-id"
+    }
+  ]
 }
 ```
 
@@ -1564,7 +1634,7 @@ For existing custom implementations:
 ## Next Steps
 
 1. **Initialize project structure** with Agents SDK
-2. **Set up Vectorize** for employee handbook
+2. **Load employee handbook** into R2, KV, or bundle with worker
 3. **Implement Agent class** with core lifecycle methods
 4. **Add embedded SQL schema** for users, balances, requests
 5. **Build tool methods** for PTO operations
@@ -1582,183 +1652,5 @@ For existing custom implementations:
 - [Agents SDK GitHub](https://github.com/cloudflare/agents-sdk)
 - [AI SDK Documentation](https://sdk.vercel.ai/docs)
 - [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
-
-You operate in a Thought-Action-Observation loop:
-
-1. **THOUGHT**: Analyze the user's request and plan your approach step-by-step.
-   - Break down complex tasks into smaller steps
-   - Identify what information you need
-   - Decide which tools to use
-
-2. **ACTION**: Execute one tool at a time using this format:
-   \`\`\`json
-   {
-     "action": "tool_name",
-     "action_input": {
-       "param1": "value1",
-       "param2": "value2"
-     }
-   }
-   \`\`\`
-
-3. **OBSERVATION**: After each tool call, you'll receive results. Use them to update your thinking.
-
-4. **LOOP**: Continue the cycle until you have all the information needed to provide a final answer.
-
-5. **FINAL ANSWER**: When ready, provide your response using:
-   \`\`\`json
-   {
-     "action": "final_answer",
-     "action_input": {
-       "response": "Your friendly, helpful response to the user"
-     }
-   }
-   \`\`\`
-
-## Policy Information
-
-**IMPORTANT**: Do not use hardcoded policies. Always search the employee handbook using the `search_employee_handbook` tool to get current, accurate policy information. The handbook contains the authoritative rules for PTO, expenses, benefits, and all company policies.
-
-## Your Behavior
-
-- Always think step-by-step before acting
-- Use tools to gather accurate, real-time data (don't guess)
-- For any policy questions or validations, first search the employee handbook
-- Validate against policies using the validation tools
-- Be friendly, professional, and concise
-- If a request violates policy, explain why clearly
-- If escalating, explain the reason to both employee and manager
-- Always log audit events for compliance
-
-## Example Interaction
-
-User: "I need PTO for December 20-22"
-
-THOUGHT: The user wants PTO. I need to:
-1. Get current user info
-2. Calculate business days for Dec 20-22
-3. Check their PTO balance
-4. Search handbook for PTO approval policies
-5. Validate against blackouts
-6. Determine if auto-approve or escalate
-7. Submit the request
-8. Respond to user
-
-ACTION:
-\`\`\`json
-{
-  "action": "get_current_user",
-  "action_input": {}
-}
-\`\`\`
-
-OBSERVATION: {"id": "user123", "username": "alice", "employee_level": "junior", "manager_id": "mgr456"}
-
-THOUGHT: Alice is a junior employee. Now I'll calculate the business days and search for PTO policies.
-
-ACTION:
-\`\`\`json
-{
-  "action": "calculate_business_days",
-  "action_input": {
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22"
-  }
-}
-\`\`\`
-
-OBSERVATION: {"business_days": 3, "weekend_days": 0, "holidays": []}
-
-THOUGHT: 3 business days. Let me search the handbook for PTO approval limits for junior employees.
-
-ACTION:
-\`\`\`json
-{
-  "action": "search_employee_handbook",
-  "action_input": {
-    "query": "PTO approval limits for junior employees",
-    "category": "pto"
-  }
-}
-\`\`\`
-
-OBSERVATION: {"results": [{"content": "Junior employees can have PTO requests up to 3 business days auto-approved by the system.", "score": 0.95, "metadata": {"section": "Time Off Policy", "category": "pto", "last_updated": "2025-01-15"}}], "total_found": 1}
-
-THOUGHT: Perfect! Junior employees can auto-approve up to 3 days. Let me check her balance and validate.
-
-ACTION:
-\`\`\`json
-{
-  "action": "validate_pto_policy",
-  "action_input": {
-    "employee_id": "user123",
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22",
-    "reason": "Personal time"
-  }
-}
-\`\`\`
-
-OBSERVATION: {"is_valid": true, "can_auto_approve": true, "requires_escalation": false, "violations": [], "recommendation": "AUTO_APPROVE"}
-
-THOUGHT: Great! This can be auto-approved (3 days ≤ 3-day junior limit). Let me submit it.
-
-ACTION:
-\`\`\`json
-{
-  "action": "submit_pto_request",
-  "action_input": {
-    "employee_id": "user123",
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22",
-    "total_days": 3,
-    "reason": "Personal time",
-    "status": "auto_approved",
-    "approval_type": "auto",
-    "validation_notes": "Auto-approved within junior employee limit per handbook"
-  }
-}
-\`\`\`
-
-OBSERVATION: {"request_id": "req789", "status": "auto_approved", "message": "Request submitted successfully"}
-
-THOUGHT: Perfect! Now I'll provide a friendly response.
-
-FINAL ANSWER:
-\`\`\`json
-{
-  "action": "final_answer",
-  "action_input": {
-    "response": "Great news! Your PTO request for December 20-22 (3 business days) has been automatically approved. ✅ Enjoy your time off!"
-  }
-}
-\`\`\`
-
----
-
-## Comparison: Custom ReAct vs Cloudflare Agents SDK
-
-| Aspect             | Custom ReAct Implementation | Cloudflare Agents SDK         |
-| ------------------ | --------------------------- | ----------------------------- |
-| **Architecture**   | Manual THOUGHT-ACTION loop  | AI SDK with native tool calls |
-| **State**          | Custom Durable Storage      | Auto-persisted setState()     |
-| **Database**       | D1 binding required         | Embedded SQLite built-in      |
-| **Scheduling**     | Manual Alarms API           | Native schedule() method      |
-| **Client Sync**    | Custom WebSocket code       | useAgent hook auto-sync       |
-| **Type Safety**    | Manual interfaces           | Full TypeScript support       |
-| **Code Volume**    | ~500+ lines                 | ~200 lines                    |
-| **Learning Curve** | High (custom framework)     | Low (standard patterns)       |
-| **Maintenance**    | High                        | Low                           |
-| **Tool Calling**   | JSON parsing & validation   | AI SDK handles automatically  |
-
----
-
-## References
-
-- [Cloudflare Agents SDK Documentation](https://developers.cloudflare.com/agents/)
-- [Agents SDK GitHub](https://github.com/cloudflare/agents-sdk)
-- [AI SDK Documentation](https://sdk.vercel.ai/docs)
-- [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
-
+- [Cloudflare R2 Storage](https://developers.cloudflare.com/r2/)
+- [Cloudflare Workers KV](https://developers.cloudflare.com/kv/)
