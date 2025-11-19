@@ -725,6 +725,260 @@ async function getUserFromSession(
   }
 }
 
+// Receipt upload endpoint
+app.post("/api/receipts/upload", async (c) => {
+  try {
+    console.log("[RECEIPT] Receipt upload request received");
+
+    // Get user from session
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) {
+      console.warn("[RECEIPT] Unauthorized upload attempt");
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    // Parse multipart form data
+    const formData = await c.req.formData();
+    const file = formData.get("receipt") as File;
+    const expenseRequestId = formData.get("expense_request_id") as string;
+
+    if (!file) {
+      console.warn("[RECEIPT] No file provided");
+      return c.json({ error: "Receipt file is required" }, 400);
+    }
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+    if (!allowedTypes.includes(file.type)) {
+      console.warn("[RECEIPT] Invalid file type:", file.type);
+      return c.json({
+        error: `Invalid file type. Allowed types: ${allowedTypes.join(", ")}`
+      }, 400);
+    }
+
+    // Validate file size (5MB limit for MVP)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      console.warn("[RECEIPT] File too large:", file.size);
+      return c.json({
+        error: `File size exceeds maximum of ${maxSize / 1024 / 1024}MB`
+      }, 400);
+    }
+
+    console.log("[RECEIPT] Processing file:", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      user: user.username
+    });
+
+    // Read file as buffer and convert to base64
+    const buffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(buffer);
+
+    // Convert to base64 in chunks to avoid call stack size exceeded
+    let base64Data = '';
+    const chunkSize = 0x8000; // 32KB chunks
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      base64Data += String.fromCharCode(...chunk);
+    }
+    base64Data = btoa(base64Data);
+
+    // Generate receipt ID
+    const receiptId = crypto.randomUUID();
+    const now = Math.floor(Date.now() / 1000);
+
+    // Create expense request if not provided
+    let finalExpenseRequestId = expenseRequestId;
+    if (!finalExpenseRequestId) {
+      finalExpenseRequestId = crypto.randomUUID();
+      console.log("[RECEIPT] Creating placeholder expense request:", finalExpenseRequestId);
+
+      await c.env.APP_DB.prepare(`
+        INSERT INTO expense_requests (
+          id, employee_id, category, amount, currency, description, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        finalExpenseRequestId,
+        user.id,
+        'pending_receipt_processing',
+        0,
+        'USD',
+        'Receipt uploaded, pending OCR processing',
+        'pending'
+      ).run();
+    }
+
+    // Insert receipt record
+    console.log("[RECEIPT] Storing receipt in database:", receiptId);
+    await c.env.APP_DB.prepare(`
+      INSERT INTO receipt_uploads (
+        id, expense_request_id, file_name, file_type, file_size,
+        file_data, upload_date, ocr_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      receiptId,
+      finalExpenseRequestId,
+      file.name,
+      file.type,
+      file.size,
+      base64Data,
+      now,
+      'pending'
+    ).run();
+
+    console.log("[RECEIPT] Receipt stored successfully:", receiptId);
+
+    // Process OCR using Workers AI Vision
+    let ocrResult = null;
+    let ocrStatus = 'pending';
+    let processingErrors = null;
+
+    try {
+      console.log("[RECEIPT] Processing OCR with Workers AI Vision");
+
+      // Use @cf/llava-hf/llava-1.5-7b-hf model for image understanding
+      const ocrPrompt = `You are a receipt data extraction expert. Analyze this receipt image and extract the following information in JSON format:
+{
+  "amount": <total amount as a number>,
+  "currency": "<currency code like USD, EUR, etc.>",
+  "date": "<date in YYYY-MM-DD format>",
+  "merchant": "<merchant/vendor name>",
+  "items": [
+    {"description": "<item name>", "amount": <item price>}
+  ]
+}
+
+Only return valid JSON. If you cannot extract a field, use null. Focus on the total amount at the bottom of the receipt.`;
+
+      // Prepare image data in the correct format for Workers AI
+      // The model expects image as an array of Uint8Array
+      const aiResponse = await c.env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+        prompt: ocrPrompt,
+        image: Array.from(uint8Array),
+        max_tokens: 512
+      });
+
+      console.log("[RECEIPT] AI Response:", aiResponse);
+
+      // Parse the response
+      if (aiResponse && aiResponse.description) {
+        // Try to extract JSON from the response
+        const jsonMatch = aiResponse.description.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          ocrResult = JSON.parse(jsonMatch[0]);
+          ocrStatus = 'completed';
+          console.log("[RECEIPT] OCR extraction successful:", ocrResult);
+        } else {
+          throw new Error("No JSON found in AI response");
+        }
+      } else {
+        throw new Error("Invalid AI response format");
+      }
+
+      // Update receipt with extracted data
+      await c.env.APP_DB.prepare(`
+        UPDATE receipt_uploads
+        SET ocr_status = ?, extracted_data = ?
+        WHERE id = ?
+      `).bind(ocrStatus, JSON.stringify(ocrResult), receiptId).run();
+
+    } catch (error) {
+      console.error("[RECEIPT] OCR processing error:", error);
+      processingErrors = error instanceof Error ? error.message : "OCR processing failed";
+      ocrStatus = 'failed';
+
+      // Update receipt with error status
+      await c.env.APP_DB.prepare(`
+        UPDATE receipt_uploads
+        SET ocr_status = ?, processing_errors = ?
+        WHERE id = ?
+      `).bind(ocrStatus, processingErrors, receiptId).run();
+    }
+
+    return c.json({
+      success: true,
+      receipt_id: receiptId,
+      expense_request_id: finalExpenseRequestId,
+      message: ocrStatus === 'completed'
+        ? "Receipt uploaded and processed successfully!"
+        : "Receipt uploaded but OCR processing failed. You can manually enter the details.",
+      file_name: file.name,
+      file_size: file.size,
+      ocr_status: ocrStatus,
+      extracted_data: ocrResult,
+      processing_errors: processingErrors
+    });
+
+  } catch (error) {
+    console.error("[RECEIPT] Upload error:", error);
+    return c.json({ error: "Failed to upload receipt" }, 500);
+  }
+});
+
+// Get receipt by ID
+app.get("/api/receipts/:id", async (c) => {
+  try {
+    const receiptId = c.req.param("id");
+    console.log("[RECEIPT] Fetching receipt:", receiptId);
+
+    // Get user from session
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    const receipt = await c.env.APP_DB.prepare(`
+      SELECT r.*, e.employee_id
+      FROM receipt_uploads r
+      JOIN expense_requests e ON r.expense_request_id = e.id
+      WHERE r.id = ?
+    `).bind(receiptId).first<{
+      id: string;
+      expense_request_id: string;
+      file_name: string;
+      file_type: string;
+      file_size: number;
+      file_data: string;
+      ocr_status: string;
+      extracted_data: string | null;
+      processing_errors: string | null;
+      employee_id: string;
+    }>();
+
+    if (!receipt) {
+      console.warn("[RECEIPT] Receipt not found:", receiptId);
+      return c.json({ error: "Receipt not found" }, 404);
+    }
+
+    // Check authorization - only owner can view
+    if (receipt.employee_id !== user.id) {
+      console.warn("[RECEIPT] Unauthorized access attempt:", {
+        receiptId,
+        userId: user.id,
+        ownerId: receipt.employee_id
+      });
+      return c.json({ error: "Unauthorized" }, 403);
+    }
+
+    return c.json({
+      id: receipt.id,
+      expense_request_id: receipt.expense_request_id,
+      file_name: receipt.file_name,
+      file_type: receipt.file_type,
+      file_size: receipt.file_size,
+      ocr_status: receipt.ocr_status,
+      extracted_data: receipt.extracted_data ? JSON.parse(receipt.extracted_data) : null,
+      processing_errors: receipt.processing_errors
+    });
+
+  } catch (error) {
+    console.error("[RECEIPT] Fetch error:", error);
+    return c.json({ error: "Failed to fetch receipt" }, 500);
+  }
+});
+
 // Fallback route for agent requests
 app.all("*", async (c) => {
   const path = c.req.path;

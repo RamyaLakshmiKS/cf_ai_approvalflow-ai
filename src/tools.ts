@@ -650,7 +650,145 @@ const submit_pto_request: Tool = {
 };
 
 /**
- * Tool 9: Log Audit Event
+ * Tool 9: Process Receipt Image
+ * Processes a receipt and extracts expense data using OCR
+ */
+const process_receipt_image: Tool = {
+  name: "process_receipt_image",
+  description:
+    "Processes a receipt image that was uploaded by the user and returns the extracted expense data (amount, date, merchant, items). Use this when a user uploads a receipt for expense reimbursement.",
+  parameters: {
+    type: "object",
+    properties: {
+      receipt_id: {
+        type: "string",
+        description: "The receipt ID returned from the upload endpoint"
+      }
+    },
+    required: ["receipt_id"]
+  },
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { receipt_id } = params as { receipt_id: string };
+    console.log("[TOOL] process_receipt_image called for receipt:", receipt_id);
+
+    // Fetch the receipt from database
+    const receipt = await context.env.APP_DB.prepare(
+      "SELECT * FROM receipt_uploads WHERE id = ?"
+    )
+      .bind(receipt_id)
+      .first<{
+        id: string;
+        expense_request_id: string;
+        file_data: string;
+        ocr_status: string;
+        extracted_data: string | null;
+        processing_errors: string | null;
+      }>();
+
+    if (!receipt) {
+      throw new Error("Receipt not found");
+    }
+
+    // If already processed, return existing data
+    if (receipt.ocr_status === "completed" && receipt.extracted_data) {
+      console.log("[TOOL] process_receipt_image - Using cached OCR data");
+      return {
+        receipt_id: receipt.id,
+        expense_request_id: receipt.expense_request_id,
+        status: "completed",
+        extracted_data: JSON.parse(receipt.extracted_data)
+      };
+    }
+
+    // If processing failed, return the error
+    if (receipt.ocr_status === "failed") {
+      console.log("[TOOL] process_receipt_image - OCR processing had failed");
+      return {
+        receipt_id: receipt.id,
+        expense_request_id: receipt.expense_request_id,
+        status: "failed",
+        error: receipt.processing_errors || "OCR processing failed"
+      };
+    }
+
+    // Otherwise processing should have been done during upload
+    console.log("[TOOL] process_receipt_image - Receipt status:", receipt.ocr_status);
+    return {
+      receipt_id: receipt.id,
+      expense_request_id: receipt.expense_request_id,
+      status: receipt.ocr_status,
+      extracted_data: receipt.extracted_data ? JSON.parse(receipt.extracted_data) : null,
+      error: receipt.processing_errors
+    };
+  }
+};
+
+/**
+ * Tool 10: Get Receipt Data
+ * Retrieves receipt information including extracted OCR data
+ */
+const get_receipt_data: Tool = {
+  name: "get_receipt_data",
+  description:
+    "Retrieves receipt information and extracted data for a given receipt ID. Use this to get the details of a previously uploaded receipt.",
+  parameters: {
+    type: "object",
+    properties: {
+      receipt_id: {
+        type: "string",
+        description: "The receipt ID"
+      }
+    },
+    required: ["receipt_id"]
+  },
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { receipt_id } = params as { receipt_id: string };
+    console.log("[TOOL] get_receipt_data called for receipt:", receipt_id);
+
+    const receipt = await context.env.APP_DB.prepare(`
+      SELECT r.*, e.employee_id
+      FROM receipt_uploads r
+      JOIN expense_requests e ON r.expense_request_id = e.id
+      WHERE r.id = ?
+    `)
+      .bind(receipt_id)
+      .first<{
+        id: string;
+        expense_request_id: string;
+        file_name: string;
+        file_type: string;
+        file_size: number;
+        ocr_status: string;
+        extracted_data: string | null;
+        processing_errors: string | null;
+        employee_id: string;
+      }>();
+
+    if (!receipt) {
+      throw new Error("Receipt not found");
+    }
+
+    // Check authorization - only owner can access
+    if (receipt.employee_id !== context.userId) {
+      throw new Error("Unauthorized access to receipt");
+    }
+
+    console.log("[TOOL] get_receipt_data - Retrieved receipt data");
+    return {
+      receipt_id: receipt.id,
+      expense_request_id: receipt.expense_request_id,
+      file_name: receipt.file_name,
+      file_type: receipt.file_type,
+      file_size: receipt.file_size,
+      ocr_status: receipt.ocr_status,
+      extracted_data: receipt.extracted_data ? JSON.parse(receipt.extracted_data) : null,
+      processing_errors: receipt.processing_errors
+    };
+  }
+};
+
+/**
+ * Tool 11: Log Audit Event
  * Records all agent actions for compliance
  */
 const log_audit_event: Tool = {
@@ -727,6 +865,8 @@ export const tools: Record<string, Tool> = {
   calculate_business_days,
   validate_pto_policy,
   submit_pto_request,
+  process_receipt_image,
+  get_receipt_data,
   log_audit_event
 };
 
