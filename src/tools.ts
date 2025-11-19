@@ -788,7 +788,31 @@ const get_receipt_data: Tool = {
 };
 
 /**
- * Tool 11: Log Audit Event
+ * Tool 11: Show Expense Submission Dialog
+ * Triggers the UI to show the expense submission dialog
+ */
+const show_expense_dialog: Tool = {
+  name: "show_expense_dialog",
+  description:
+    "Shows the expense submission dialog to the user when they want to submit an expense reimbursement request. Use this when the user mentions wanting to submit an expense, get reimbursed, or upload a receipt.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: []
+  },
+  execute: async (_params: Record<string, unknown>, _context: ToolContext) => {
+    console.log("[TOOL] show_expense_dialog - Triggering UI dialog");
+
+    // Return a special marker that the frontend will detect
+    return {
+      __ui_action: "show_expense_dialog",
+      message: "Opening expense submission form..."
+    };
+  }
+};
+
+/**
+ * Tool 12: Log Audit Event
  * Records all agent actions for compliance
  */
 const log_audit_event: Tool = {
@@ -867,6 +891,7 @@ export const tools: Record<string, Tool> = {
   submit_pto_request,
   process_receipt_image,
   get_receipt_data,
+  show_expense_dialog,
   log_audit_event
 };
 

@@ -28,6 +28,7 @@ import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { Textarea } from "@/components/textarea/Textarea";
 import { Toggle } from "@/components/toggle/Toggle";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import { ExpenseSubmissionDialog } from "@/components/expense/ExpenseSubmissionDialog";
 import { useAuthContext } from "@/providers/AuthProvider";
 import type { tools } from "./tools";
 
@@ -44,6 +45,7 @@ function ChatInterface() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
+  const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -129,6 +131,38 @@ function ChatInterface() {
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
+  // Detect UI actions from tool results
+  useEffect(() => {
+    try {
+      // Check all messages for UI actions (tool could be in any assistant message)
+      for (const message of agentMessages) {
+        if (message.role === "assistant" && message.parts) {
+          for (const part of message.parts) {
+            if (isToolUIPart(part)) {
+              // Check if this is the show_expense_dialog tool
+              const toolName = part.type.replace("tool-", "");
+              console.log("[UI] Found tool in message:", toolName, "state:", part.state);
+
+              if (toolName === "show_expense_dialog") {
+                console.log("[UI] show_expense_dialog tool found, state:", part.state);
+
+                // Open dialog - check for various valid states
+                const validStates = ["input-available", "output-available", "input-streaming", "output-error"];
+                if (validStates.includes(part.state)) {
+                  console.log("[UI] Opening expense dialog");
+                  setShowExpenseDialog(true);
+                  return; // Stop after finding the first match
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[UI] Error detecting UI actions:", error);
+    }
+  }, [agentMessages]);
+
   const pendingToolCallConfirmation = agentMessages.some((m: UIMessage) =>
     m.parts?.some(
       (part) =>
@@ -143,6 +177,35 @@ function ChatInterface() {
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleExpenseSubmit = async (expenseData: {
+    amount: number;
+    category: string;
+    description: string;
+    date: string;
+    receiptId?: string;
+  }) => {
+    console.log("[UI] Expense submitted:", expenseData);
+
+    try {
+      // Send a message to the agent confirming the expense submission
+      const message = `I've submitted an expense: $${expenseData.amount} for ${expenseData.category}. ${expenseData.description}. Receipt ID: ${expenseData.receiptId || "none"}`;
+
+      await sendMessage({
+        role: "user",
+        parts: [{ type: "text", text: message }]
+      }, {
+        body: { user, expenseData }
+      });
+
+      console.log("[UI] Expense message sent successfully");
+      setShowExpenseDialog(false);
+    } catch (error) {
+      console.error("[UI] Error submitting expense:", error);
+      // Still close the dialog even if message fails
+      setShowExpenseDialog(false);
+    }
   };
 
   return (
@@ -458,6 +521,13 @@ function ChatInterface() {
           </div>
         </form>
       </div>
+
+      {/* Expense Submission Dialog */}
+      <ExpenseSubmissionDialog
+        isOpen={showExpenseDialog}
+        onClose={() => setShowExpenseDialog(false)}
+        onSubmit={handleExpenseSubmit}
+      />
     </div>
   );
 }

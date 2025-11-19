@@ -242,30 +242,50 @@ export class Chat extends AIChatAgent<Env> {
         "steps"
       );
       console.log("[AGENT] Response text length:", result.response.length);
+      console.log("[AGENT] Tool calls:", result.toolCalls?.length || 0);
       console.log(
         "[AGENT] ReAct Steps:",
         JSON.stringify(result.steps, null, 2)
       );
 
-      // Save the assistant's response
+      // Build message parts including tool calls
+      const parts: any[] = [];
+
+      // Add tool call parts first
+      if (result.toolCalls && result.toolCalls.length > 0) {
+        for (const toolCall of result.toolCalls) {
+          console.log("[AGENT] Adding tool part:", toolCall.toolName);
+          parts.push({
+            type: `tool-${toolCall.toolName}` as const,
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            input: toolCall.args,
+            output: toolCall.result,
+            state: "output-available" as const // Using correct state value
+          });
+        }
+      }
+
+      // Add text response
+      parts.push({
+        type: "text",
+        text: result.response
+      });
+
+      // Save the assistant's response with tool calls
       await this.saveMessages([
         ...this.messages,
         {
           id: generateId(),
           role: "assistant",
-          parts: [
-            {
-              type: "text",
-              text: result.response
-            }
-          ],
+          parts: parts as any,
           metadata: {
             createdAt: new Date().toISOString()
           }
-        }
+        } as any
       ]);
 
-      console.log("[AGENT] Response saved and returning to client");
+      console.log("[AGENT] Response saved with", parts.length, "parts and returning to client");
       finishStream(result.response);
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
