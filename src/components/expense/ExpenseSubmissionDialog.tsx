@@ -276,7 +276,7 @@ export const ExpenseSubmissionDialog = ({
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  initialValue={formData.amount}
                   onValueChange={(value: string) => setFormData(prev => ({ ...prev, amount: value }))}
                   placeholder="0.00"
                   required
@@ -300,7 +300,7 @@ export const ExpenseSubmissionDialog = ({
               <Input
                 id="date"
                 type="date"
-                value={formData.date}
+                initialValue={formData.date}
                 onValueChange={(value: string) => setFormData(prev => ({ ...prev, date: value }))}
                 required
               />
@@ -310,7 +310,7 @@ export const ExpenseSubmissionDialog = ({
               <Input
                 id="merchant"
                 type="text"
-                value={formData.merchant}
+                initialValue={formData.merchant}
                 onValueChange={(value: string) => setFormData(prev => ({ ...prev, merchant: value }))}
                 placeholder="e.g., Restaurant Name"
               />

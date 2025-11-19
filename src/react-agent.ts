@@ -2,13 +2,12 @@
  * AI SDK Agent Implementation
  *
  * Uses the Vercel AI SDK with Workers AI provider for streaming responses
- * with tool support for expense dialogs and other actions
+ * with pattern-based tool triggering for expense dialogs
  */
 
-import { streamText, tool } from "ai";
+import { streamText } from "ai";
 import type { LanguageModel } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
-import { z } from "zod";
 import { getSystemPrompt } from "./prompts";
 import { tools } from "./tools";
 
@@ -79,60 +78,56 @@ export async function runReActAgent(
     content: userMessage
   });
 
-  try {
-    // Create AI SDK compatible tools
-    const aiTools = {
-      show_expense_dialog: tool({
-        description: "Shows the expense submission dialog to the user when they want to submit an expense reimbursement request. Use this when the user mentions wanting to submit an expense, get reimbursed, or upload a receipt.",
-        parameters: z.object({}),
-        execute: async () => {
-          console.log("[TOOL] show_expense_dialog called from AI SDK");
-          return await tools.show_expense_dialog.execute({}, context);
-        }
-      })
-    };
+  // Check if user wants to submit an expense (pattern matching)
+  const expenseKeywords = [
+    "submit an expense",
+    "expense reimbursement",
+    "submit expense",
+    "reimburse",
+    "reimbursement",
+    "upload receipt",
+    "submit receipt",
+    "expense for"
+  ];
+  const isExpenseRequest = expenseKeywords.some(keyword =>
+    userMessage.toLowerCase().includes(keyword)
+  );
 
-    // Use streamText WITH tools
+  // If expense request detected, trigger the dialog tool
+  if (isExpenseRequest) {
+    console.log("[AGENT] Expense request detected, calling show_expense_dialog");
+
+    const toolResult = await tools.show_expense_dialog.execute({}, context);
+
+    return {
+      response: "Perfect! I'm opening the expense submission form for you. You'll be able to upload your receipt and the system will automatically extract the details.",
+      toolCalls: [
+        {
+          toolName: "show_expense_dialog",
+          toolCallId: crypto.randomUUID(),
+          args: {},
+          result: toolResult
+        }
+      ],
+      steps: []
+    };
+  }
+
+  try {
+    // Use streamText WITHOUT tools (Workers AI doesn't support tool calling well)
     const result = await streamText({
       model,
       system: getSystemPrompt(),
       messages,
-      temperature: 0.2,
-      tools: aiTools,
-      maxToolRoundtrips: 5
+      temperature: 0.2
     });
 
-    // Collect the full response and tool calls
+    // Collect the full response
     let fullResponse = "";
-    const toolCalls: Array<{
-      toolName: string;
-      toolCallId: string;
-      args: unknown;
-      result: unknown
-    }> = [];
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
         fullResponse += chunk.text;
-      } else if (chunk.type === "tool-call") {
-        console.log("[AGENT] Tool called:", chunk.toolName, "id:", chunk.toolCallId);
-        // Store the tool call info
-        const existingCall = toolCalls.find(tc => tc.toolCallId === chunk.toolCallId);
-        if (!existingCall) {
-          toolCalls.push({
-            toolName: chunk.toolName,
-            toolCallId: chunk.toolCallId,
-            args: (chunk as any).input || {},
-            result: null
-          });
-        }
-      } else if (chunk.type === "tool-result") {
-        console.log("[AGENT] Tool result:", chunk.toolName, (chunk as any).output);
-        // Update the tool call with the result
-        const call = toolCalls.find(tc => tc.toolCallId === chunk.toolCallId);
-        if (call) {
-          call.result = (chunk as any).output;
-        }
       } else if (chunk.type === "error") {
         console.error("[AGENT] Stream error:", chunk.error);
         throw chunk.error;
@@ -141,16 +136,14 @@ export async function runReActAgent(
 
     console.log(
       "[AGENT] Agent completed with response length:",
-      fullResponse.length,
-      "tool calls:",
-      toolCalls.length
+      fullResponse.length
     );
 
     return {
       response:
         fullResponse.trim() ||
         "I apologize, but I wasn't able to generate a proper response. Please try again.",
-      toolCalls,
+      toolCalls: [],
       steps
     };
   } catch (error) {
