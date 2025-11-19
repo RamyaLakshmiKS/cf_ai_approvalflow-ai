@@ -13,7 +13,7 @@ This implementation plan uses the **Cloudflare Agents SDK** to build a stateful 
 1. **State Management**: Automatic persistence and synchronization across sessions
 2. **SQL Database**: Zero-latency embedded SQLite for data operations
 3. **Scheduling**: Native task scheduling with cron and one-time triggers
-4. **AI Integration**: Seamless Workers AI, OpenAI, and Anthropic support
+4. **AI Integration**: Cloudflare Workers AI for LLM reasoning and responses
 5. **WebSocket & HTTP**: Real-time bidirectional communication
 
 The agent demonstrates autonomy, multi-step problem solving, state persistence, and dynamic adaptation using Cloudflare's native infrastructure.
@@ -37,7 +37,7 @@ The agent demonstrates autonomy, multi-step problem solving, state persistence, 
                      ▼
         ┌────────────────────────────┐
         │   AI Model Integration     │
-        │   (Workers AI / OpenAI)    │
+        │   (Workers AI)             │
         │   - Multi-step reasoning   │
         │   - Tool calling           │
         └────────────┬───────────────┘
@@ -90,7 +90,7 @@ The agent demonstrates autonomy, multi-step problem solving, state persistence, 
 - **Agents SDK**: Base Agent and AIChatAgent classes with state, SQL, and scheduling
 - **Employee Handbook**: Static markdown file loaded into LLM context for policy queries
 - **D1 Database**: Optional external relational data (can use Agent SQL instead)
-- **Workers AI / OpenAI**: LLM reasoning, response generation, and handbook analysis
+- **Workers AI**: LLM reasoning, response generation, and handbook analysis
 - **Durable Objects**: Underlying infrastructure (Agent extends DO)
 
 ---
@@ -190,11 +190,7 @@ private async searchEmployeeHandbook(
     this.handbookContent = await this.loadHandbookContent();
   }
 
-  // Use LLM to extract relevant sections from handbook
-  const openai = createOpenAI({
-    apiKey: this.env.OPENAI_API_KEY,
-  });
-
+  // Use Workers AI to extract relevant sections from handbook
   const prompt = `You are a policy expert. Given the following employee handbook and a user query, extract and return ONLY the relevant policy sections that answer the query.
 
 # Employee Handbook
@@ -206,14 +202,16 @@ ${query}${category ? `\nCategory: ${category}` : ''}
 # Instructions
 Extract and return the exact relevant sections from the handbook that answer this query. Include section titles and full policy text. If multiple sections are relevant, include all of them.`;
 
-  const result = await generateText({
-    model: openai("gpt-4-turbo"),
-    prompt,
+  const result = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+    messages: [
+      { role: 'system', content: 'You are a helpful policy expert that extracts relevant information from documents.' },
+      { role: 'user', content: prompt }
+    ],
     temperature: 0.1 // Low temperature for factual extraction
   });
 
   return {
-    relevant_sections: result.text,
+    relevant_sections: result.response,
     query,
     category
   };
@@ -617,8 +615,6 @@ async function validate_pto_policy(params: PTOValidationParams) {
 // src/agents/approval-agent.ts
 import { Agent } from "agents";
 import { z } from "zod";
-import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 
 interface Env {
   // Cloudflare bindings
@@ -627,8 +623,6 @@ interface Env {
   HANDBOOK_KV?: KVNamespace; // Optional: for KV storage
   // Agent binding (auto-provided by Agents SDK)
   APPROVAL_AGENT: AgentNamespace<ApprovalAgent>;
-  // Secrets
-  OPENAI_API_KEY: string;
 }
 
 interface ApprovalAgentState {
@@ -723,10 +717,6 @@ export class ApprovalAgent extends Agent<Env, ApprovalAgentState> {
   
   // Core AI processing with tool calling
   private async processUserMessage(userMessage: string): Promise<string> {
-    const openai = createOpenAI({
-      apiKey: this.env.OPENAI_API_KEY,
-    });
-    
     // Define tools for AI model
     const tools = {
       getCurrentUser: {
@@ -799,15 +789,18 @@ export class ApprovalAgent extends Agent<Env, ApprovalAgentState> {
       }
     };
     
-    // Generate response with tool calling
-    const result = await generateText({
-      model: openai("gpt-4-turbo"),
-      system: this.getSystemPrompt(),
+    // Generate response with tool calling using Workers AI
+    const result = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
       messages: [
+        { role: "system", content: this.getSystemPrompt() },
         { role: "user", content: userMessage }
       ],
-      tools,
-      maxToolRoundtrips: 5, // Allow multi-step tool usage
+      tools: Object.entries(tools).map(([name, tool]) => ({
+        name,
+        description: tool.description,
+        parameters: tool.parameters
+      })),
+      temperature: 0.7
     });
     
     // Update state with conversation history
@@ -824,7 +817,17 @@ export class ApprovalAgent extends Agent<Env, ApprovalAgentState> {
       ]
     });
     
-    return result.text;
+    // Handle tool calls if present
+    if (result.tool_calls && result.tool_calls.length > 0) {
+      for (const toolCall of result.tool_calls) {
+        const tool = tools[toolCall.name];
+        if (tool) {
+          await tool.execute(toolCall.arguments);
+        }
+      }
+    }
+    
+    return result.response;
   }
   
   // System prompt for AI model
@@ -878,19 +881,23 @@ Think step-by-step and use tools to gather accurate information.`;
       this.handbookContent = await this.loadHandbookContent();
     }
 
-    // Use LLM to extract relevant sections
-    const openai = createOpenAI({
-      apiKey: this.env.OPENAI_API_KEY,
-    });
-
-    const result = await generateText({
-      model: openai("gpt-4-turbo"),
-      prompt: `Extract relevant policy sections from this handbook:\n\n${this.handbookContent}\n\nQuery: ${query}\nCategory: ${category || 'any'}`,
+    // Use Workers AI to extract relevant sections
+    const result = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are a helpful policy expert that extracts relevant information from documents.' 
+        },
+        { 
+          role: 'user', 
+          content: `Extract relevant policy sections from this handbook:\n\n${this.handbookContent}\n\nQuery: ${query}\nCategory: ${category || 'any'}` 
+        }
+      ],
       temperature: 0.1
     });
 
     return {
-      relevant_sections: result.text,
+      relevant_sections: result.response,
       query,
       category
     };
@@ -1347,8 +1354,8 @@ onStateUpdate: (newState) => {
 
 ### Phase 3: AI Integration (Week 3)
 
-- [ ] Integrate AI SDK with tool calling
-- [ ] Configure Workers AI or OpenAI for LLM reasoning
+- [ ] Integrate Workers AI with tool calling
+- [ ] Configure Workers AI model (@cf/meta/llama-3.3-70b-instruct-fp8-fast)
 - [ ] Build system prompts for PTO use case
 - [ ] Implement streaming responses
 - [ ] Add error handling and retry logic
@@ -1437,30 +1444,40 @@ const { id } = await this.schedule("1 day", "reminder", {});
 await this.cancelSchedule(id);
 ```
 
-### Tool Calling with AI SDK
+### Tool Calling with Workers AI
 
 ```typescript
-import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { z } from "zod";
-
 const tools = {
   searchHandbook: {
+    name: 'searchHandbook',
     description: "Search employee handbook",
-    parameters: z.object({
-      query: z.string()
-    }),
-    execute: async ({ query }) => await this.searchEmployeeHandbook(query)
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' }
+      },
+      required: ['query']
+    }
   }
 };
 
-const result = await generateText({
-  model: openai("gpt-4-turbo"),
-  system: "You are ApprovalFlow AI...",
-  messages: [{ role: "user", content: userMessage }],
-  tools,
-  maxToolRoundtrips: 5 // Allow multi-step reasoning
+const result = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+  messages: [
+    { role: "system", content: "You are ApprovalFlow AI..." },
+    { role: "user", content: userMessage }
+  ],
+  tools: Object.values(tools),
+  temperature: 0.7
 });
+
+// Handle tool calls
+if (result.tool_calls) {
+  for (const call of result.tool_calls) {
+    if (call.name === 'searchHandbook') {
+      await this.searchEmployeeHandbook(call.arguments.query);
+    }
+  }
+}
 ```
 
 ---
@@ -1533,23 +1550,29 @@ private async searchEmployeeHandbook(query: string, category?: string) {
     this.handbookContent = await this.loadHandbookContent();
   }
 
-  const openai = createOpenAI({ apiKey: this.env.OPENAI_API_KEY });
-
-  const result = await generateText({
-    model: openai("gpt-4-turbo"),
-    prompt: `You are a policy expert. Extract relevant sections from this handbook:
+  const result = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+    messages: [
+      { 
+        role: 'system', 
+        content: 'You are a policy expert. Extract relevant sections from employee handbooks.' 
+      },
+      { 
+        role: 'user', 
+        content: `Extract relevant sections from this handbook:
 
 ${this.handbookContent}
 
 Query: ${query}
 Category: ${category || 'any'}
 
-Return ONLY the exact policy text that answers the query. Include section titles.`,
+Return ONLY the exact policy text that answers the query. Include section titles.` 
+      }
+    ],
     temperature: 0.1 // Low temperature for factual extraction
   });
 
   return {
-    relevant_sections: result.text,
+    relevant_sections: result.response,
     query,
     category
   };
