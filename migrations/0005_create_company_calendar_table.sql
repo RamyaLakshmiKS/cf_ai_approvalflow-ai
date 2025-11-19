@@ -24,6 +24,32 @@ INSERT INTO company_calendar (id, event_type, name, start_date, end_date, descri
   ('holiday-2025-thanksgiving-after', 'holiday', 'Day after Thanksgiving', '2025-11-28', '2025-11-28', 'Paid company holiday'),
   ('holiday-2025-christmas', 'holiday', 'Christmas Day', '2025-12-25', '2025-12-25', 'Paid company holiday');
 
+-- Insert company holidays for 2026
+INSERT INTO company_calendar (id, event_type, name, start_date, end_date, description) VALUES
+  ('holiday-2026-newyear', 'holiday', 'New Year''s Day', '2026-01-01', '2026-01-01', 'Paid company holiday'),
+  ('holiday-2026-mlk', 'holiday', 'Martin Luther King Jr. Day', '2026-01-19', '2026-01-19', 'Paid company holiday'),
+  ('holiday-2026-presidents', 'holiday', 'Presidents'' Day', '2026-02-16', '2026-02-16', 'Paid company holiday'),
+  ('holiday-2026-memorial', 'holiday', 'Memorial Day', '2026-05-25', '2026-05-25', 'Paid company holiday'),
+  ('holiday-2026-juneteenth', 'holiday', 'Juneteenth', '2026-06-19', '2026-06-19', 'Paid company holiday'),
+  ('holiday-2026-independence', 'holiday', 'Independence Day', '2026-07-04', '2026-07-04', 'Paid company holiday'),
+  ('holiday-2026-labor', 'holiday', 'Labor Day', '2026-09-01', '2026-09-01', 'Paid company holiday'),
+  ('holiday-2026-thanksgiving', 'holiday', 'Thanksgiving Day', '2026-11-26', '2026-11-26', 'Paid company holiday'),
+  ('holiday-2026-thanksgiving-after', 'holiday', 'Day after Thanksgiving', '2026-11-27', '2026-11-27', 'Paid company holiday'),
+  ('holiday-2026-christmas', 'holiday', 'Christmas Day', '2026-12-25', '2026-12-25', 'Paid company holiday');
+
+-- Insert company holidays for 2027
+INSERT INTO company_calendar (id, event_type, name, start_date, end_date, description) VALUES
+  ('holiday-2027-newyear', 'holiday', 'New Year''s Day', '2027-01-01', '2027-01-01', 'Paid company holiday'),
+  ('holiday-2027-mlk', 'holiday', 'Martin Luther King Jr. Day', '2027-01-18', '2027-01-18', 'Paid company holiday'),
+  ('holiday-2027-presidents', 'holiday', 'Presidents'' Day', '2027-02-15', '2027-02-15', 'Paid company holiday'),
+  ('holiday-2027-memorial', 'holiday', 'Memorial Day', '2027-05-31', '2027-05-31', 'Paid company holiday'),
+  ('holiday-2027-juneteenth', 'holiday', 'Juneteenth', '2027-06-19', '2027-06-19', 'Paid company holiday'),
+  ('holiday-2027-independence', 'holiday', 'Independence Day', '2027-07-04', '2027-07-04', 'Paid company holiday'),
+  ('holiday-2027-labor', 'holiday', 'Labor Day', '2027-09-06', '2027-09-06', 'Paid company holiday'),
+  ('holiday-2027-thanksgiving', 'holiday', 'Thanksgiving Day', '2027-11-25', '2027-11-25', 'Paid company holiday'),
+  ('holiday-2027-thanksgiving-after', 'holiday', 'Day after Thanksgiving', '2027-11-26', '2027-11-26', 'Paid company holiday'),
+  ('holiday-2027-christmas', 'holiday', 'Christmas Day', '2027-12-25', '2027-12-25', 'Paid company holiday');
+
 -- Insert blackout periods (fiscal quarter ends + first week of January)
 INSERT INTO company_calendar (id, event_type, name, start_date, end_date, description) VALUES
   ('blackout-2025-q1-end', 'blackout', 'Q1 Fiscal Quarter End', '2025-03-24', '2025-03-31', 'Last week of Q1 - PTO restricted'),
@@ -31,3 +57,19 @@ INSERT INTO company_calendar (id, event_type, name, start_date, end_date, descri
   ('blackout-2025-q3-end', 'blackout', 'Q3 Fiscal Quarter End', '2025-09-22', '2025-09-30', 'Last week of Q3 - PTO restricted'),
   ('blackout-2025-q4-end', 'blackout', 'Q4 Fiscal Quarter End', '2025-12-24', '2025-12-31', 'Last week of Q4 - PTO restricted'),
   ('blackout-2025-new-year-week', 'blackout', 'First Week of January', '2025-01-02', '2025-01-09', 'New year planning week - PTO restricted');
+
+-- Insert blackout periods for 2026
+INSERT INTO company_calendar (id, event_type, name, start_date, end_date, description) VALUES
+  ('blackout-2026-q1-end', 'blackout', 'Q1 Fiscal Quarter End', '2026-03-24', '2026-03-31', 'Last week of Q1 - PTO restricted'),
+  ('blackout-2026-q2-end', 'blackout', 'Q2 Fiscal Quarter End', '2026-06-23', '2026-06-30', 'Last week of Q2 - PTO restricted'),
+  ('blackout-2026-q3-end', 'blackout', 'Q3 Fiscal Quarter End', '2026-09-22', '2026-09-30', 'Last week of Q3 - PTO restricted'),
+  ('blackout-2026-q4-end', 'blackout', 'Q4 Fiscal Quarter End', '2026-12-24', '2026-12-31', 'Last week of Q4 - PTO restricted'),
+  ('blackout-2026-new-year-week', 'blackout', 'First Week of January', '2026-01-02', '2026-01-09', 'New year planning week - PTO restricted');
+
+-- Insert blackout periods for 2027
+INSERT INTO company_calendar (id, event_type, name, start_date, end_date, description) VALUES
+  ('blackout-2027-q1-end', 'blackout', 'Q1 Fiscal Quarter End', '2027-03-24', '2027-03-31', 'Last week of Q1 - PTO restricted'),
+  ('blackout-2027-q2-end', 'blackout', 'Q2 Fiscal Quarter End', '2027-06-23', '2027-06-30', 'Last week of Q2 - PTO restricted'),
+  ('blackout-2027-q3-end', 'blackout', 'Q3 Fiscal Quarter End', '2027-09-22', '2027-09-30', 'Last week of Q3 - PTO restricted'),
+  ('blackout-2027-q4-end', 'blackout', 'Q4 Fiscal Quarter End', '2027-12-24', '2027-12-31', 'Last week of Q4 - PTO restricted'),
+  ('blackout-2027-new-year-week', 'blackout', 'First Week of January', '2027-01-02', '2027-01-09', 'New year planning week - PTO restricted');
