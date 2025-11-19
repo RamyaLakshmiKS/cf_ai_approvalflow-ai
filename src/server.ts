@@ -271,6 +271,10 @@ export class Chat extends AIChatAgent<Env> {
             const resultInfo = "output" in chunk ? JSON.stringify(chunk.output).substring(0, 100) : "dynamic";
             console.log("[AGENT] Tool result in stream:", chunk.toolCallId, "output preview:", resultInfo);
             toolResults.push(chunk);
+          } else if (chunk.type === "tool-error") {
+            console.error("[AGENT] Tool error in stream:", chunk);
+            // Tool errors are still tool results, just with error information
+            toolResults.push(chunk);
           } else if (chunk.type === "finish") {
             finishReason = chunk.finishReason;
             usage = chunk.totalUsage;

@@ -126,9 +126,13 @@ export function createAITools(context: ToolContext) {
 
     validate_pto_policy: tool({
       description:
-        "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request.",
+        "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request. CRITICAL: You MUST call get_current_user first to get the employee_id. Do NOT call this tool without all required parameters (employee_id, start_date, end_date).",
       parameters: z.object({
-        employee_id: z.string().describe("Employee ID"),
+        employee_id: z
+          .string()
+          .describe(
+            "Employee ID - REQUIRED. Get this by calling get_current_user first. Use the 'id' field from get_current_user result."
+          ),
         start_date: z
           .string()
           .describe("Start date in ISO 8601 format (YYYY-MM-DD)"),

@@ -360,13 +360,13 @@ const calculate_business_days: Tool = {
 const validate_pto_policy: Tool = {
   name: "validate_pto_policy",
   description:
-    "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request.",
+    "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request. REQUIRED: You MUST call get_current_user first to get the employee_id. Do NOT call this tool without employee_id, start_date, and end_date.",
   parameters: {
     type: "object",
     properties: {
       employee_id: {
         type: "string",
-        description: "Employee ID"
+        description: "Employee ID - REQUIRED. You MUST get this by calling get_current_user first. The employee_id is the 'id' field from get_current_user result."
       },
       start_date: {
         type: "string",
