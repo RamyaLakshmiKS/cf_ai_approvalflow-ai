@@ -93,8 +93,12 @@ export async function runReActAgent(
     userMessage.toLowerCase().includes(keyword)
   );
 
+  // Check if this is a submission confirmation from the dialog
+  const isExpenseSubmission = userMessage.includes("I've submitted an expense:") &&
+                              userMessage.includes("Receipt ID:");
+
   // If expense request detected, trigger the dialog tool
-  if (isExpenseRequest) {
+  if (isExpenseRequest && !isExpenseSubmission) {
     console.log("[AGENT] Expense request detected, calling show_expense_dialog");
 
     const toolResult = await tools.show_expense_dialog.execute({}, context);
@@ -113,37 +117,120 @@ export async function runReActAgent(
     };
   }
 
+  // If this is an expense submission, let the agent handle it with tools
+  // The system prompt will guide the agent to call validate_expense_policy and submit_expense_request
+
   try {
-    // Use streamText WITHOUT tools (Workers AI doesn't support tool calling well)
-    const result = await streamText({
-      model,
-      system: getSystemPrompt(),
-      messages,
-      temperature: 0.2
-    });
+    // Manual ReAct loop for tool calling (since Workers AI doesn't support AI SDK tools well)
+    const maxIterations = 5;
+    let currentMessages = [...messages];
+    let finalResponse = "";
+    const toolCallsExecuted: Array<{
+      toolName: string;
+      toolCallId: string;
+      args: unknown;
+      result: unknown;
+    }> = [];
 
-    // Collect the full response
-    let fullResponse = "";
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      console.log(`[AGENT] ReAct iteration ${iteration + 1}/${maxIterations}`);
 
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "text-delta") {
-        fullResponse += chunk.text;
-      } else if (chunk.type === "error") {
-        console.error("[AGENT] Stream error:", chunk.error);
-        throw chunk.error;
+      // Get AI response
+      const result = await streamText({
+        model,
+        system: getSystemPrompt() + `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format:
+TOOL_CALL: tool_name
+PARAMETERS: {json parameters}
+---
+
+When you have all the information you need, provide your final response without any tool calls.`,
+        messages: currentMessages,
+        temperature: 0.2
+      });
+
+      // Collect response
+      let responseText = "";
+      for await (const chunk of result.fullStream) {
+        if (chunk.type === "text-delta") {
+          responseText += chunk.text;
+        }
+      }
+
+      console.log(`[AGENT] Iteration ${iteration + 1} response:`, responseText.substring(0, 200));
+
+      // Check if agent wants to call a tool
+      const toolCallMatch = responseText.match(/TOOL_CALL:\s*(\w+)/);
+      const parametersMatch = responseText.match(/PARAMETERS:\s*(\{[\s\S]*?\})\s*---/);
+
+      if (toolCallMatch && parametersMatch) {
+        const toolName = toolCallMatch[1];
+        const tool = tools[toolName];
+
+        if (!tool) {
+          console.error(`[AGENT] Unknown tool: ${toolName}`);
+          finalResponse = `I tried to call a tool that doesn't exist: ${toolName}`;
+          break;
+        }
+
+        console.log(`[AGENT] Agent calling tool: ${toolName}`);
+
+        try {
+          const params = JSON.parse(parametersMatch[1]);
+          const toolResult = await tool.execute(params, context);
+
+          console.log(`[AGENT] Tool ${toolName} result:`, toolResult);
+
+          const toolCallId = crypto.randomUUID();
+          toolCallsExecuted.push({
+            toolName,
+            toolCallId,
+            args: params,
+            result: toolResult
+          });
+
+          // Add tool result to conversation
+          currentMessages.push({
+            role: "assistant",
+            content: `TOOL_CALL: ${toolName}\nPARAMETERS: ${JSON.stringify(params)}\n---`
+          });
+          currentMessages.push({
+            role: "user",
+            content: `TOOL_RESULT: ${JSON.stringify(toolResult)}`
+          });
+
+          steps.push({
+            iteration: iteration + 1,
+            thought: `Calling ${toolName}`,
+            action: toolName,
+            observation: toolResult
+          });
+        } catch (error) {
+          console.error(`[AGENT] Tool ${toolName} error:`, error);
+          currentMessages.push({
+            role: "user",
+            content: `TOOL_ERROR: ${error instanceof Error ? error.message : "Tool execution failed"}`
+          });
+        }
+      } else {
+        // No more tool calls, this is the final response
+        finalResponse = responseText;
+        console.log("[AGENT] Final response generated");
+        break;
       }
     }
 
     console.log(
       "[AGENT] Agent completed with response length:",
-      fullResponse.length
+      finalResponse.length,
+      "tool calls:",
+      toolCallsExecuted.length
     );
 
     return {
       response:
-        fullResponse.trim() ||
+        finalResponse.trim() ||
         "I apologize, but I wasn't able to generate a proper response. Please try again.",
-      toolCalls: [],
+      toolCalls: toolCallsExecuted,
       steps
     };
   } catch (error) {

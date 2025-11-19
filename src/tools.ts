@@ -812,7 +812,389 @@ const show_expense_dialog: Tool = {
 };
 
 /**
- * Tool 12: Log Audit Event
+ * Tool 12: Get Expense History
+ * Retrieves expense history for an employee to check daily/monthly spending limits
+ */
+const get_expense_history: Tool = {
+  name: "get_expense_history",
+  description: "Retrieves expense history for an employee to check daily/monthly spending limits.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "Employee ID to query"
+      },
+      timeframe: {
+        type: "string",
+        enum: ["today", "this_week", "this_month", "all"],
+        description: "Time period to query"
+      },
+      category: {
+        type: "string",
+        description: "Optional: filter by expense category (meals, travel, etc.)"
+      }
+    },
+    required: ["employee_id", "timeframe"]
+  },
+  execute: async (params, context: ToolContext) => {
+    const { employee_id, timeframe, category } = params as {
+      employee_id: string;
+      timeframe: "today" | "this_week" | "this_month" | "all";
+      category?: string;
+    };
+
+    console.log(`[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`);
+
+    let timeCondition = "";
+    const now = Math.floor(Date.now() / 1000);
+
+    switch (timeframe) {
+      case "today":
+        const startOfDay = now - (now % 86400);
+        timeCondition = `AND created_at >= ${startOfDay}`;
+        break;
+      case "this_week":
+        const startOfWeek = now - (7 * 86400);
+        timeCondition = `AND created_at >= ${startOfWeek}`;
+        break;
+      case "this_month":
+        const startOfMonth = now - (30 * 86400);
+        timeCondition = `AND created_at >= ${startOfMonth}`;
+        break;
+    }
+
+    const query = `
+      SELECT id, category, amount, currency, description, status, created_at
+      FROM expense_requests
+      WHERE employee_id = ?
+      ${category ? "AND category = ?" : ""}
+      ${timeCondition}
+      ORDER BY created_at DESC
+    `;
+
+    const bindings = category ? [employee_id, category] : [employee_id];
+    const results = await context.env.APP_DB.prepare(query)
+      .bind(...bindings)
+      .all();
+
+    const total = results.results.reduce((sum, exp: any) => sum + exp.amount, 0);
+
+    console.log(`[TOOL] Found ${results.results.length} expenses, total: $${total}`);
+
+    return {
+      expenses: results.results,
+      total_amount: total,
+      count: results.results.length,
+      timeframe
+    };
+  }
+};
+
+/**
+ * Tool 13: Validate Expense Policy
+ * Comprehensive validation against company expense policies using handbook
+ */
+const validate_expense_policy: Tool = {
+  name: "validate_expense_policy",
+  description: "Validates an expense request against all company policies from the handbook: auto-approval limits, receipt requirements, non-reimbursable items, and daily limits. Use this BEFORE submitting an expense.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: {
+        type: "string",
+        description: "Employee ID"
+      },
+      amount: {
+        type: "number",
+        description: "Expense amount"
+      },
+      category: {
+        type: "string",
+        description: "Expense category: meals, travel, home_office, training, software, supplies"
+      },
+      description: {
+        type: "string",
+        description: "Brief description of the expense"
+      },
+      has_receipt: {
+        type: "boolean",
+        description: "Whether a receipt is attached"
+      },
+      receipt_data: {
+        type: "object",
+        description: "Optional: Extracted data from receipt (merchant, date, etc.)"
+      }
+    },
+    required: ["employee_id", "amount", "category", "has_receipt"]
+  },
+  execute: async (params, context: ToolContext) => {
+    const { employee_id, amount, category, description, has_receipt, receipt_data } = params as {
+      employee_id: string;
+      amount: number;
+      category: string;
+      description?: string;
+      has_receipt: boolean;
+      receipt_data?: { merchant: string; date: string; extracted_amount: number };
+    };
+
+    console.log("[TOOL] validate_expense_policy called with:", {
+      employee_id,
+      amount,
+      category,
+      has_receipt
+    });
+
+    const violations: Array<{ policy: string; message: string }> = [];
+
+    // Get employee info
+    const employee = await context.env.APP_DB.prepare(
+      "SELECT employee_level FROM users WHERE id = ?"
+    )
+      .bind(employee_id)
+      .first<{ employee_level: string }>();
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    console.log("[TOOL] Employee level:", employee.employee_level);
+
+    // Step 1: Query handbook for auto-approval limits
+    const limitQuery = await search_employee_handbook.execute({
+      query: `What is the auto-approval limit for ${employee.employee_level} employee ${category} expenses?`
+    }, context) as { answer: string };
+
+    console.log("[TOOL] Handbook auto-approval limit response:", limitQuery.answer);
+
+    // Parse limit from handbook (fallback: junior=$100, senior=$500)
+    const autoApprovalLimit = employee.employee_level === "senior" ? 500 : 100;
+
+    // Step 2: Check amount vs limit
+    if (amount > autoApprovalLimit) {
+      violations.push({
+        policy: "exceeds_auto_approval_limit",
+        message: `Amount $${amount} exceeds auto-approval limit of $${autoApprovalLimit} for ${employee.employee_level} employees.`
+      });
+    }
+
+    // Step 3: Query handbook for receipt requirements
+    const receiptQuery = await search_employee_handbook.execute({
+      query: "Are receipts required for expenses over $75?"
+    }, context) as { answer: string };
+
+    console.log("[TOOL] Handbook receipt policy response:", receiptQuery.answer);
+
+    // Step 4: Check receipt requirement
+    if (amount > 75 && !has_receipt) {
+      violations.push({
+        policy: "missing_receipt",
+        message: "Receipt is required for expenses over $75 per company policy (Section 6.1)."
+      });
+    }
+
+    // Step 5: Query handbook for non-reimbursable items
+    const nonReimbursableQuery = await search_employee_handbook.execute({
+      query: `Is a ${category} expense for "${description || category}" reimbursable? What expenses are not reimbursable?`
+    }, context) as { answer: string };
+
+    console.log("[TOOL] Handbook non-reimbursable response:", nonReimbursableQuery.answer);
+
+    // Step 6: Check for non-reimbursable patterns
+    const nonReimbursableKeywords = [
+      'alcohol', 'parking ticket', 'speeding ticket', 'mini-bar',
+      'movie rental', 'family', 'spouse', 'personal'
+    ];
+
+    const descriptionLower = (description || "").toLowerCase();
+    for (const keyword of nonReimbursableKeywords) {
+      if (descriptionLower.includes(keyword)) {
+        violations.push({
+          policy: "non_reimbursable_item",
+          message: `Expense may contain non-reimbursable items (detected: "${keyword}"). Per Section 6.3.`
+        });
+        break;
+      }
+    }
+
+    // Step 7: Check daily limits for meals
+    if (category === 'meals') {
+      const todayExpenses = await get_expense_history.execute({
+        employee_id,
+        timeframe: 'today',
+        category: 'meals'
+      }, context) as { total_amount: number; count: number };
+
+      console.log("[TOOL] Today's meal expenses:", todayExpenses.total_amount);
+
+      const dailyMealLimit = 75; // Per diem from handbook
+      const totalToday = todayExpenses.total_amount + amount;
+
+      if (totalToday > dailyMealLimit) {
+        violations.push({
+          policy: "exceeds_daily_limit",
+          message: `Total meal expenses for today ($${totalToday}) would exceed daily limit of $${dailyMealLimit}.`
+        });
+      }
+    }
+
+    // Step 8: Make final decision
+    const canAutoApprove = violations.length === 0 && amount <= autoApprovalLimit;
+    const requiresEscalation = amount > autoApprovalLimit && !violations.some(v =>
+      v.policy === "non_reimbursable_item" || v.policy === "missing_receipt"
+    );
+
+    let recommendation: "AUTO_APPROVE" | "ESCALATE_TO_MANAGER" | "DENY";
+    if (violations.some(v => v.policy === "non_reimbursable_item" || v.policy === "missing_receipt")) {
+      recommendation = "DENY";
+    } else if (requiresEscalation) {
+      recommendation = "ESCALATE_TO_MANAGER";
+    } else {
+      recommendation = "AUTO_APPROVE";
+    }
+
+    console.log("[TOOL] Validation result:", {
+      recommendation,
+      violations: violations.length
+    });
+
+    return {
+      is_valid: violations.length === 0,
+      can_auto_approve: canAutoApprove,
+      requires_escalation: requiresEscalation,
+      violations,
+      auto_approval_limit: autoApprovalLimit,
+      employee_level: employee.employee_level,
+      recommendation,
+      checks_performed: {
+        amount_check: amount <= autoApprovalLimit ? "pass" : "fail",
+        receipt_check: amount > 75
+          ? (has_receipt ? "pass" : "fail")
+          : "not_required",
+        policy_violations: violations.map(v => v.policy)
+      }
+    };
+  }
+};
+
+/**
+ * Tool 14: Submit Expense Request
+ * Creates an expense reimbursement request in the database
+ */
+const submit_expense_request: Tool = {
+  name: "submit_expense_request",
+  description: "Creates an expense reimbursement request in the database with the validation status.",
+  parameters: {
+    type: "object",
+    properties: {
+      employee_id: { type: "string" },
+      category: {
+        type: "string",
+        description: "Expense category: meals, travel, home_office, training, software, supplies"
+      },
+      amount: { type: "number" },
+      currency: { type: "string" },
+      description: { type: "string" },
+      receipt_id: {
+        type: "string",
+        description: "Receipt upload ID if available"
+      },
+      status: {
+        type: "string",
+        enum: ["pending", "auto_approved", "denied"],
+        description: "Status based on validation result"
+      },
+      auto_approved: { type: "boolean" },
+      escalation_reason: {
+        type: "string",
+        description: "Reason for escalation or denial"
+      },
+      employee_level: {
+        type: "string",
+        description: "Employee level snapshot"
+      },
+      ai_validation_status: {
+        type: "string",
+        description: "AI validation status"
+      }
+    },
+    required: ["employee_id", "category", "amount", "description", "status"]
+  },
+  execute: async (params, context: ToolContext) => {
+    const id = crypto.randomUUID();
+
+    console.log(`[TOOL] submit_expense_request: Creating expense ${id}`);
+
+    // Get employee and manager info (same pattern as submit_pto_request)
+    const employee = await context.env.APP_DB.prepare(
+      "SELECT manager_id, employee_level FROM users WHERE id = ?"
+    ).bind(params.employee_id).first();
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    // If receipt_id is provided, link it to this expense
+    if (params.receipt_id) {
+      await context.env.APP_DB.prepare(`
+        UPDATE receipt_uploads
+        SET expense_request_id = ?
+        WHERE id = ?
+      `).bind(id, params.receipt_id).run();
+    }
+
+    // Insert expense request
+    await context.env.APP_DB.prepare(`
+      INSERT INTO expense_requests (
+        id, employee_id, manager_id, category, amount, currency,
+        description, status, auto_approved, escalation_reason,
+        employee_level, ai_validation_status, submission_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      params.employee_id,
+      (employee as { manager_id: string }).manager_id,
+      params.category,
+      params.amount,
+      params.currency || 'USD',
+      params.description,
+      params.status,
+      params.auto_approved ? 1 : 0,
+      params.escalation_reason || null,
+      params.employee_level || (employee as { employee_level: string }).employee_level,
+      params.ai_validation_status || 'validated',
+      'chat_ai'
+    ).run();
+
+    // Log audit event
+    await log_audit_event.execute({
+      entity_type: "expense_request",
+      entity_id: id,
+      action: "created",
+      details: {
+        category: params.category,
+        amount: params.amount,
+        status: params.status,
+        auto_approved: params.auto_approved
+      }
+    }, context);
+
+    console.log(`[TOOL] Expense created: ${id}, status: ${params.status}`);
+
+    return {
+      request_id: id,
+      status: params.status,
+      message: params.status === 'auto_approved'
+        ? `Expense approved automatically!`
+        : params.status === 'pending'
+        ? `Expense submitted for manager review.`
+        : `Expense request denied.`
+    };
+  }
+};
+
+/**
+ * Tool 14: Log Audit Event
  * Records all agent actions for compliance
  */
 const log_audit_event: Tool = {
@@ -891,6 +1273,9 @@ export const tools: Record<string, Tool> = {
   submit_pto_request,
   process_receipt_image,
   get_receipt_data,
+  get_expense_history,
+  validate_expense_policy,
+  submit_expense_request,
   show_expense_dialog,
   log_audit_event
 };
