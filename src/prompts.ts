@@ -50,10 +50,13 @@ ${getToolDescriptions()}
 
 **ALWAYS respond in plain, natural language.** Be concise and include only what the user needs to know. Do not describe internal steps, tool calls, or background checks to the user.
 
+**CRITICAL: After calling any tools, you MUST generate a text response to the user. Do not stop after tool calls - always provide a helpful response based on the tool results.**
+
 - Use clear, simple sentences
 - Format your responses with proper markdown when helpful (lists, bold, etc.)
 - Never output JSON or code blocks in your responses
 - Be concise but informative
+- After retrieving information from tools, always provide a response to the user
 
 ## CRITICAL RULES
 

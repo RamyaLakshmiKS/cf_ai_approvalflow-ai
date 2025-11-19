@@ -2,13 +2,14 @@
  * AI SDK Agent Implementation
  *
  * Uses the Vercel AI SDK with Workers AI provider for streaming responses
- * Note: Currently using manual tool execution due to ai-sdk v5 API compatibility
+ * Now properly integrated with tool calling support
  */
 
 import { streamText } from "ai";
 import type { LanguageModel } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { getSystemPrompt } from "./prompts";
+import { createAITools } from "./ai-tools";
 
 /**
  * Tool context containing environment and user info
@@ -19,30 +20,18 @@ export type ToolContext = {
 };
 
 /**
- * Execute the AI agent with streaming - SIMPLIFIED VERSION without tools for now
- * TODO: Add tool support once ai-sdk v5 tool() API is properly configured
+ * Execute the AI agent with streaming and tool support
+ * Returns the streamText result which includes tool calls
  */
 export async function runReActAgent(
   userMessage: string,
   conversationHistory: Array<{ role: string; content: string }>,
-  context: ToolContext
-): Promise<{
-  response: string;
-  steps: Array<{
-    iteration: number;
-    thought: string;
-    action: string;
-    observation: unknown;
-  }>;
-}> {
+  context: ToolContext,
+  options?: { includeTools?: boolean }
+) {
+  const includeTools = options?.includeTools !== false; // Default to true
   console.log("[AGENT] Starting AI SDK agent with message:", userMessage);
-
-  const steps: Array<{
-    iteration: number;
-    thought: string;
-    action: string;
-    observation: unknown;
-  }> = [];
+  console.log("[AGENT] Tools enabled:", includeTools);
 
   // Create Workers AI instance
   const workersai = createWorkersAI({ binding: context.env.AI });
@@ -72,43 +61,26 @@ export async function runReActAgent(
     content: userMessage
   });
 
+  // Create AI SDK tools with context (only if tools are enabled)
+  const tools = includeTools ? createAITools(context) : undefined;
+  console.log("[AGENT] Created", tools ? Object.keys(tools).length : 0, "tools");
+
   try {
-    // Use streamText WITHOUT tools for now (simpler, working approach)
-    const result = await streamText({
+    // Use streamText WITH tools - the model can now call tools
+    // The AI SDK automatically handles multiple rounds: tool call -> result -> text generation
+    const result = streamText({
       model,
       system: getSystemPrompt(),
       messages,
+      ...(tools ? { tools } : {}), // Only include tools if provided
       temperature: 0.2
+      // Note: The AI SDK automatically continues after tool calls
     });
 
-    // Collect the full response
-    let fullResponse = "";
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "text-delta") {
-        fullResponse += chunk.text;
-      } else if (chunk.type === "error") {
-        console.error("[AGENT] Stream error:", chunk.error);
-        throw chunk.error;
-      }
-    }
-
-    console.log(
-      "[AGENT] Agent completed with response length:",
-      fullResponse.length
-    );
-
-    return {
-      response:
-        fullResponse.trim() ||
-        "I apologize, but I wasn't able to generate a proper response. Please try again.",
-      steps
-    };
+    console.log("[AGENT] Stream created successfully with tool support");
+    return result;
   } catch (error) {
     console.error("[AGENT] Error in runReActAgent:", error);
-    return {
-      response:
-        "I encountered an error processing your request. Please try again.",
-      steps
-    };
+    throw error;
   }
 }

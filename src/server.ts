@@ -228,26 +228,162 @@ export class Chat extends AIChatAgent<Env> {
         userId: userId
       };
 
-      // Run the ReAct agent
-      console.log("[AGENT] Starting ReAct agent");
-      const result = await runReActAgent(
-        textPart.text,
-        conversationHistory,
-        toolContext
-      );
+      // Run the ReAct agent with tool support
+      console.log("[AGENT] Starting ReAct agent with tools");
+      let streamResult;
+      try {
+        streamResult = await runReActAgent(
+          textPart.text,
+          conversationHistory,
+          toolContext
+        );
+        console.log("[AGENT] Stream result obtained");
+      } catch (error) {
+        console.error("[AGENT] Error getting stream result:", error);
+        throw error;
+      }
+
+      // Consume the full stream to handle tool calls and text generation
+      // The fullStream includes both tool calls and text deltas
+      let text = "";
+      const toolCalls: unknown[] = [];
+      const toolResults: unknown[] = [];
+      let usage: LanguageModelUsage = ZERO_USAGE;
+      let finishReason: FinishReason = "stop";
+
+      try {
+        console.log("[AGENT] Consuming full stream (tool calls + text)...");
+        
+        // Process the full stream which includes tool calls and text
+        let hasToolCall = false;
+        let hasText = false;
+        for await (const chunk of streamResult.fullStream) {
+          if (chunk.type === "text-delta") {
+            text += chunk.text;
+            hasText = true;
+            console.log("[AGENT] Text delta received, current length:", text.length);
+          } else if (chunk.type === "tool-call") {
+            const toolCallInfo = "input" in chunk ? JSON.stringify(chunk.input).substring(0, 100) : "dynamic";
+            console.log("[AGENT] Tool call in stream:", chunk.toolName, "input:", toolCallInfo);
+            toolCalls.push(chunk);
+            hasToolCall = true;
+          } else if (chunk.type === "tool-result") {
+            const resultInfo = "output" in chunk ? JSON.stringify(chunk.output).substring(0, 100) : "dynamic";
+            console.log("[AGENT] Tool result in stream:", chunk.toolCallId, "output preview:", resultInfo);
+            toolResults.push(chunk);
+          } else if (chunk.type === "finish") {
+            finishReason = chunk.finishReason;
+            usage = chunk.totalUsage;
+            console.log("[AGENT] Stream finished with reason:", finishReason, "hasToolCall:", hasToolCall, "hasText:", hasText, "textLength:", text.length);
+          } else if (chunk.type === "error") {
+            console.error("[AGENT] Stream error:", chunk.error);
+            throw chunk.error;
+          } else {
+            console.log("[AGENT] Unknown chunk type:", chunk.type);
+          }
+        }
+
+        // Also wait for the final promises to ensure everything is complete
+        const [finalText, finalToolCalls, finalToolResults, finalUsage, finalFinishReason] =
+          await Promise.all([
+            streamResult.text,
+            streamResult.toolCalls,
+            streamResult.toolResults,
+            streamResult.usage,
+            streamResult.finishReason
+          ]);
+
+        // Use the final values (more reliable than stream accumulation)
+        text = finalText || text;
+        if (finalToolCalls.length > 0) {
+          toolCalls.push(...finalToolCalls);
+        }
+        if (finalToolResults.length > 0) {
+          toolResults.push(...finalToolResults);
+        }
+        usage = finalUsage || usage;
+        finishReason = finalFinishReason || finishReason;
+
+        console.log("[AGENT] Stream completed successfully");
+      } catch (error) {
+        console.error("[AGENT] Error consuming stream:", error);
+        // Try to get at least the text
+        try {
+          const fallbackText = await streamResult.text;
+          text = fallbackText || text;
+        } catch (textError) {
+          console.error("[AGENT] Error getting fallback text:", textError);
+        }
+      }
+
+      // Get final text
+      let finalText = (text || "").trim();
 
       console.log(
-        "[AGENT] ReAct agent completed with",
-        result.steps.length,
-        "steps"
+        "[AGENT] Agent completed - Text:",
+        finalText.substring(0, 100),
+        "Length:",
+        finalText.length,
+        "Tool calls:",
+        toolCalls.length,
+        "Tool results:",
+        toolResults.length,
+        "Finish reason:",
+        finishReason
       );
-      console.log("[AGENT] Response text length:", result.response.length);
-      console.log(
-        "[AGENT] ReAct Steps:",
-        JSON.stringify(result.steps, null, 2)
-      );
+
+      // If tools were called but no text was generated, make a follow-up call
+      // Workers AI models may not automatically continue after tool calls
+      if (toolCalls.length > 0 && !finalText && finishReason === "stop") {
+        console.log("[AGENT] Tools called but no text generated - making follow-up call");
+        
+        try {
+          // Extract tool results for context
+          const toolResultsSummary = toolResults
+            .map((tr: unknown) => {
+              if (tr && typeof tr === "object" && "output" in tr && tr.output) {
+                return JSON.stringify(tr.output);
+              }
+              return "";
+            })
+            .filter(Boolean)
+            .join("\n");
+
+          // Make a simple follow-up call WITHOUT tools to generate a response
+          // Include the tool results in the user message
+          const followUpPrompt = `Based on the information I just retrieved: ${toolResultsSummary}\n\nPlease provide a helpful response to the user's message: "${textPart.text}"`;
+          
+          const followUpResult = await runReActAgent(
+            followUpPrompt,
+            conversationHistory,
+            toolContext,
+            { includeTools: false } // Don't include tools in follow-up call
+          );
+
+          // Get text from follow-up (this time without tools, so it should generate text)
+          const followUpText = await followUpResult.text;
+          if (followUpText && followUpText.trim()) {
+            finalText = followUpText.trim();
+            console.log("[AGENT] Follow-up call generated text:", finalText.substring(0, 100));
+          }
+        } catch (followUpError) {
+          console.error("[AGENT] Error in follow-up call:", followUpError);
+        }
+      }
+
+      if (!finalText) {
+        console.error(
+          "[AGENT] ERROR: No text generated after tool calls and follow-up attempt."
+        );
+      }
+
+      // Use finalText or fallback message
+      const responseText =
+        finalText || "I apologize, but I wasn't able to generate a response. Please try again.";
 
       // Save the assistant's response
+      // Note: The framework will automatically add tool call parts from the StepResult
+      // We save the text response here, and tool calls are handled by the framework
       await this.saveMessages([
         ...this.messages,
         {
@@ -256,7 +392,7 @@ export class Chat extends AIChatAgent<Env> {
           parts: [
             {
               type: "text",
-              text: result.response
+              text: responseText
             }
           ],
           metadata: {
@@ -265,8 +401,51 @@ export class Chat extends AIChatAgent<Env> {
         }
       ]);
 
-      console.log("[AGENT] Response saved and returning to client");
-      finishStream(result.response);
+      console.log(
+        "[AGENT] Response saved - Text:",
+        responseText.length,
+        "chars, Tool calls:",
+        toolCalls.length
+      );
+
+      // Build a proper StepResult with tool calls for onFinish
+      const now = new Date();
+      const stepResult: StepResult<ToolSet> & {
+        steps: StepResult<ToolSet>[];
+        totalUsage: LanguageModelUsage;
+      } = {
+        content: [],
+        text: responseText,
+        reasoning: [],
+        reasoningText: undefined,
+        files: [] as GeneratedFile[],
+        sources: [],
+        toolCalls: (toolCalls || []) as TypedToolCall<ToolSet>[],
+        staticToolCalls: [] as StaticToolCall<ToolSet>[],
+        dynamicToolCalls: [] as DynamicToolCall[],
+        toolResults: (toolResults || []) as TypedToolResult<ToolSet>[],
+        staticToolResults: [] as StaticToolResult<ToolSet>[],
+        dynamicToolResults: [] as DynamicToolResult[],
+        finishReason: finishReason || "stop",
+        usage: usage || ZERO_USAGE,
+        warnings: undefined,
+        request: {} as LanguageModelRequestMetadata,
+        response: {
+          id: generateId(),
+          timestamp: now,
+          modelId: "approvalflow",
+          messages: []
+        },
+        providerMetadata: undefined,
+        steps: [],
+        totalUsage: usage || ZERO_USAGE
+      };
+
+      console.log("[AGENT] Calling onFinish with text:", responseText.substring(0, 50));
+
+      // Call onFinish with the step result which includes tool calls
+      // The framework will handle streaming tool calls to the client
+      onFinish(stepResult);
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
       const errorMsg =
