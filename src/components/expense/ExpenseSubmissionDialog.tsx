@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { Modal } from "@/components/modal/Modal";
 import { Button } from "@/components/button/Button";
 import { Input } from "@/components/input/Input";
@@ -123,11 +123,11 @@ export const ExpenseSubmissionDialog = ({
   };
 
   const handleSubmit = async () => {
-    setStep("submitting");
+    console.log("[ExpenseDialog] Submitting expense...");
 
     try {
-      // Call the onSubmit callback with the form data
-      await onSubmit({
+      // Call the onSubmit callback with the form data (this will close the dialog)
+      onSubmit({
         amount: parseFloat(formData.amount),
         category: formData.category,
         description: formData.description || `${formData.merchant} - ${formData.category}`,
@@ -135,10 +135,8 @@ export const ExpenseSubmissionDialog = ({
         receiptId: receiptId || undefined
       });
 
-      // Reset form and close after a short delay
-      setTimeout(() => {
-        handleClose();
-      }, 500);
+      // Close immediately (the parent component will handle the async submission)
+      handleClose();
     } catch (error) {
       console.error("[ExpenseDialog] Submission error:", error);
       // Reset to review step on error
@@ -148,6 +146,7 @@ export const ExpenseSubmissionDialog = ({
   };
 
   const handleClose = () => {
+    // Reset state immediately
     setStep("upload");
     setSelectedFile(null);
     setUploading(false);
@@ -163,8 +162,17 @@ export const ExpenseSubmissionDialog = ({
       category: "meals",
       description: ""
     });
+
+    // Call parent onClose to actually close the dialog
     onClose();
   };
+
+  // Reset form when dialog opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setStep("upload");
+    }
+  }, [isOpen]);
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} className="max-w-2xl">

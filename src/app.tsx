@@ -46,6 +46,7 @@ function ChatInterface() {
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+  const processedToolCalls = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -134,25 +135,32 @@ function ChatInterface() {
   // Detect UI actions from tool results
   useEffect(() => {
     try {
-      // Check all messages for UI actions (tool could be in any assistant message)
-      for (const message of agentMessages) {
-        if (message.role === "assistant" && message.parts) {
-          for (const part of message.parts) {
-            if (isToolUIPart(part)) {
-              // Check if this is the show_expense_dialog tool
-              const toolName = part.type.replace("tool-", "");
-              console.log("[UI] Found tool in message:", toolName, "state:", part.state);
+      // Check only the last assistant message for UI actions to avoid reopening on refresh
+      const lastMessage = agentMessages[agentMessages.length - 1];
 
-              if (toolName === "show_expense_dialog") {
-                console.log("[UI] show_expense_dialog tool found, state:", part.state);
+      if (lastMessage && lastMessage.role === "assistant" && lastMessage.parts) {
+        for (const part of lastMessage.parts) {
+          if (isToolUIPart(part)) {
+            // Check if this is the show_expense_dialog tool
+            const toolName = part.type.replace("tool-", "");
+            const toolCallId = part.toolCallId;
 
-                // Open dialog - check for various valid states
-                const validStates = ["input-available", "output-available", "input-streaming", "output-error"];
-                if (validStates.includes(part.state)) {
-                  console.log("[UI] Opening expense dialog");
-                  setShowExpenseDialog(true);
-                  return; // Stop after finding the first match
-                }
+            if (toolName === "show_expense_dialog" && toolCallId) {
+              // Check if we've already processed this tool call
+              if (processedToolCalls.current.has(toolCallId)) {
+                console.log("[UI] Tool call already processed:", toolCallId);
+                continue;
+              }
+
+              console.log("[UI] show_expense_dialog tool found, state:", part.state);
+
+              // Open dialog - check for various valid states
+              const validStates = ["input-available", "output-available", "input-streaming", "output-error"];
+              if (validStates.includes(part.state)) {
+                console.log("[UI] Opening expense dialog for tool call:", toolCallId);
+                processedToolCalls.current.add(toolCallId);
+                setShowExpenseDialog(true);
+                return; // Stop after finding the first match
               }
             }
           }
