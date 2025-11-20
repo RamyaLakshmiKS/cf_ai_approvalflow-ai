@@ -6,7 +6,11 @@ import { Label } from "@/components/label/Label";
 import { Select } from "@/components/select/Select";
 import { Textarea } from "@/components/textarea/Textarea";
 import { Loader } from "@/components/loader/Loader";
-import { UploadSimple, CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import {
+  UploadSimple,
+  CheckCircle,
+  WarningCircle
+} from "@phosphor-icons/react";
 
 interface ExtractedData {
   amount: number;
@@ -33,13 +37,19 @@ export const ExpenseSubmissionDialog = ({
   onClose,
   onSubmit
 }: ExpenseSubmissionDialogProps) => {
-  const [step, setStep] = useState<"upload" | "review" | "submitting">("upload");
+  const [step, setStep] = useState<"upload" | "review" | "submitting">(
+    "upload"
+  );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
-  const [ocrStatus, setOcrStatus] = useState<"pending" | "completed" | "failed" | null>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedData | null>(
+    null
+  );
+  const [ocrStatus, setOcrStatus] = useState<
+    "pending" | "completed" | "failed" | null
+  >(null);
 
   const [formData, setFormData] = useState({
     amount: "",
@@ -56,9 +66,16 @@ export const ExpenseSubmissionDialog = ({
     const file = e.target.files?.[0];
     if (file) {
       // Validate file type
-      const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+      const allowedTypes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "application/pdf"
+      ];
       if (!allowedTypes.includes(file.type)) {
-        setUploadError("Invalid file type. Please upload a JPEG, PNG, or PDF file.");
+        setUploadError(
+          "Invalid file type. Please upload a JPEG, PNG, or PDF file."
+        );
         return;
       }
 
@@ -92,19 +109,26 @@ export const ExpenseSubmissionDialog = ({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error((result as { error?: string }).error || "Upload failed");
+        throw new Error(
+          (result as { error?: string }).error || "Upload failed"
+        );
       }
 
       console.log("[ExpenseDialog] Upload successful:", result);
 
       setReceiptId((result as { receipt_id: string }).receipt_id);
-      setOcrStatus((result as { ocr_status: string }).ocr_status as "pending" | "completed" | "failed");
+      setOcrStatus(
+        (result as { ocr_status: string }).ocr_status as
+          | "pending"
+          | "completed"
+          | "failed"
+      );
 
       // Pre-fill form with extracted data
       const typedResult = result as { extracted_data?: ExtractedData };
       if (typedResult.extracted_data) {
         setExtractedData(typedResult.extracted_data);
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           amount: typedResult.extracted_data?.amount?.toString() || "",
           currency: typedResult.extracted_data?.currency || "USD",
@@ -130,7 +154,8 @@ export const ExpenseSubmissionDialog = ({
       onSubmit({
         amount: parseFloat(formData.amount),
         category: formData.category,
-        description: formData.description || `${formData.merchant} - ${formData.category}`,
+        description:
+          formData.description || `${formData.merchant} - ${formData.category}`,
         date: formData.date,
         receiptId: receiptId || undefined
       });
@@ -177,7 +202,9 @@ export const ExpenseSubmissionDialog = ({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} className="max-w-2xl">
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Submit Expense Reimbursement</h2>
+        <h2 className="text-2xl font-bold mb-4">
+          Submit Expense Reimbursement
+        </h2>
 
         {step === "upload" && (
           <div className="space-y-4">
@@ -255,9 +282,12 @@ export const ExpenseSubmissionDialog = ({
                 <div className="flex items-start gap-2">
                   <CheckCircle size={20} className="text-green-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-green-900">Receipt Processed Successfully!</h3>
+                    <h3 className="font-semibold text-green-900">
+                      Receipt Processed Successfully!
+                    </h3>
                     <p className="text-sm text-green-700 mt-1">
-                      AI extracted the following data. Please verify and adjust if needed:
+                      AI extracted the following data. Please verify and adjust
+                      if needed:
                     </p>
                   </div>
                 </div>
@@ -269,7 +299,9 @@ export const ExpenseSubmissionDialog = ({
                 <div className="flex items-start gap-2">
                   <WarningCircle size={20} className="text-yellow-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-yellow-900">OCR Processing Failed</h3>
+                    <h3 className="font-semibold text-yellow-900">
+                      OCR Processing Failed
+                    </h3>
                     <p className="text-sm text-yellow-700 mt-1">
                       Please enter the expense details manually.
                     </p>
@@ -285,7 +317,9 @@ export const ExpenseSubmissionDialog = ({
                   type="number"
                   step="0.01"
                   initialValue={formData.amount}
-                  onValueChange={(value: string) => setFormData(prev => ({ ...prev, amount: value }))}
+                  onValueChange={(value: string) =>
+                    setFormData((prev) => ({ ...prev, amount: value }))
+                  }
                   placeholder="0.00"
                   required
                 />
@@ -294,7 +328,9 @@ export const ExpenseSubmissionDialog = ({
               <Label title="Currency" htmlFor="currency">
                 <Select
                   value={formData.currency}
-                  setValue={(value: string) => setFormData(prev => ({ ...prev, currency: value }))}
+                  setValue={(value: string) =>
+                    setFormData((prev) => ({ ...prev, currency: value }))
+                  }
                   options={[
                     { value: "USD" },
                     { value: "EUR" },
@@ -309,7 +345,9 @@ export const ExpenseSubmissionDialog = ({
                 id="date"
                 type="date"
                 initialValue={formData.date}
-                onValueChange={(value: string) => setFormData(prev => ({ ...prev, date: value }))}
+                onValueChange={(value: string) =>
+                  setFormData((prev) => ({ ...prev, date: value }))
+                }
                 required
               />
             </Label>
@@ -319,7 +357,9 @@ export const ExpenseSubmissionDialog = ({
                 id="merchant"
                 type="text"
                 initialValue={formData.merchant}
-                onValueChange={(value: string) => setFormData(prev => ({ ...prev, merchant: value }))}
+                onValueChange={(value: string) =>
+                  setFormData((prev) => ({ ...prev, merchant: value }))
+                }
                 placeholder="e.g., Restaurant Name"
               />
             </Label>
@@ -327,7 +367,9 @@ export const ExpenseSubmissionDialog = ({
             <Label title="Category" htmlFor="category" required>
               <Select
                 value={formData.category}
-                setValue={(value: string) => setFormData(prev => ({ ...prev, category: value }))}
+                setValue={(value: string) =>
+                  setFormData((prev) => ({ ...prev, category: value }))
+                }
                 options={[
                   { value: "meals" },
                   { value: "travel" },
@@ -343,7 +385,12 @@ export const ExpenseSubmissionDialog = ({
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value
+                  }))
+                }
                 placeholder="e.g., Client lunch meeting"
                 rows={3}
               />

@@ -89,22 +89,26 @@ export async function runReActAgent(
     "submit receipt",
     "expense for"
   ];
-  const isExpenseRequest = expenseKeywords.some(keyword =>
+  const isExpenseRequest = expenseKeywords.some((keyword) =>
     userMessage.toLowerCase().includes(keyword)
   );
 
   // Check if this is a submission confirmation from the dialog
-  const isExpenseSubmission = userMessage.includes("I've submitted an expense:") &&
-                              userMessage.includes("Receipt ID:");
+  const isExpenseSubmission =
+    userMessage.includes("I've submitted an expense:") &&
+    userMessage.includes("Receipt ID:");
 
   // If expense request detected, trigger the dialog tool
   if (isExpenseRequest && !isExpenseSubmission) {
-    console.log("[AGENT] Expense request detected, calling show_expense_dialog");
+    console.log(
+      "[AGENT] Expense request detected, calling show_expense_dialog"
+    );
 
     const toolResult = await tools.show_expense_dialog.execute({}, context);
 
     return {
-      response: "Perfect! I'm opening the expense submission form for you. You'll be able to upload your receipt and the system will automatically extract the details.",
+      response:
+        "Perfect! I'm opening the expense submission form for you. You'll be able to upload your receipt and the system will automatically extract the details.",
       toolCalls: [
         {
           toolName: "show_expense_dialog",
@@ -138,7 +142,9 @@ export async function runReActAgent(
       // Get AI response
       const result = await streamText({
         model,
-        system: getSystemPrompt() + `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format:
+        system:
+          getSystemPrompt() +
+          `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format:
 TOOL_CALL: tool_name
 PARAMETERS: {json parameters}
 ---
@@ -167,11 +173,16 @@ When you have all the information you need, provide your final response without 
         }
       }
 
-      console.log(`[AGENT] Iteration ${iteration + 1} response:`, responseText.substring(0, 200));
+      console.log(
+        `[AGENT] Iteration ${iteration + 1} response:`,
+        responseText.substring(0, 200)
+      );
 
       // Check if agent wants to call a tool
       const toolCallMatch = responseText.match(/TOOL_CALL:\s*(\w+)/);
-      const parametersMatch = responseText.match(/PARAMETERS:\s*(\{[\s\S]*?\})\s*---/);
+      const parametersMatch = responseText.match(
+        /PARAMETERS:\s*(\{[\s\S]*?\})\s*---/
+      );
 
       if (toolCallMatch && parametersMatch) {
         const toolName = toolCallMatch[1];
@@ -191,14 +202,17 @@ When you have all the information you need, provide your final response without 
           console.log(`[AGENT] Raw params JSON:`, paramsStr.substring(0, 200));
 
           // Fix missing values after colons (e.g., "amount":, -> "amount": null,)
-          paramsStr = paramsStr.replace(/:\s*,/g, ': null,');
+          paramsStr = paramsStr.replace(/:\s*,/g, ": null,");
           // Fix trailing commas before closing braces
-          paramsStr = paramsStr.replace(/,\s*}/g, '}');
+          paramsStr = paramsStr.replace(/,\s*}/g, "}");
           // Fix missing values at end (e.g., "amount":})
-          paramsStr = paramsStr.replace(/:\s*}/g, ': null}');
+          paramsStr = paramsStr.replace(/:\s*}/g, ": null}");
 
           if (paramsStr !== parametersMatch[1]) {
-            console.log(`[AGENT] Cleaned params JSON:`, paramsStr.substring(0, 200));
+            console.log(
+              `[AGENT] Cleaned params JSON:`,
+              paramsStr.substring(0, 200)
+            );
           }
 
           const params = JSON.parse(paramsStr);
@@ -234,7 +248,8 @@ When you have all the information you need, provide your final response without 
           console.error(`[AGENT] Tool ${toolName} error:`, error);
 
           // Provide helpful error message to help AI recover
-          let errorMsg = error instanceof Error ? error.message : "Tool execution failed";
+          let errorMsg =
+            error instanceof Error ? error.message : "Tool execution failed";
 
           // If it's a JSON parse error, give specific guidance
           if (errorMsg.includes("JSON")) {

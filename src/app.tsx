@@ -1,4 +1,3 @@
-
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
 
 import type { UIMessage } from "@ai-sdk/react";
@@ -139,7 +138,11 @@ function ChatInterface() {
       // Check only the last assistant message for UI actions to avoid reopening on refresh
       const lastMessage = agentMessages[agentMessages.length - 1];
 
-      if (lastMessage && lastMessage.role === "assistant" && lastMessage.parts) {
+      if (
+        lastMessage &&
+        lastMessage.role === "assistant" &&
+        lastMessage.parts
+      ) {
         for (const part of lastMessage.parts) {
           if (isToolUIPart(part)) {
             // Check if this is the show_expense_dialog tool
@@ -153,12 +156,23 @@ function ChatInterface() {
                 continue;
               }
 
-              console.log("[UI] show_expense_dialog tool found, state:", part.state);
+              console.log(
+                "[UI] show_expense_dialog tool found, state:",
+                part.state
+              );
 
               // Open dialog - check for various valid states
-              const validStates = ["input-available", "output-available", "input-streaming", "output-error"];
+              const validStates = [
+                "input-available",
+                "output-available",
+                "input-streaming",
+                "output-error"
+              ];
               if (validStates.includes(part.state)) {
-                console.log("[UI] Opening expense dialog for tool call:", toolCallId);
+                console.log(
+                  "[UI] Opening expense dialog for tool call:",
+                  toolCallId
+                );
                 processedToolCalls.current.add(toolCallId);
                 setShowExpenseDialog(true);
                 return; // Stop after finding the first match
@@ -201,12 +215,15 @@ function ChatInterface() {
       // Send a message to the agent confirming the expense submission
       const message = `I've submitted an expense: $${expenseData.amount} for ${expenseData.category}. ${expenseData.description}. Receipt ID: ${expenseData.receiptId || "none"}`;
 
-      await sendMessage({
-        role: "user",
-        parts: [{ type: "text", text: message }]
-      }, {
-        body: { user, expenseData }
-      });
+      await sendMessage(
+        {
+          role: "user",
+          parts: [{ type: "text", text: message }]
+        },
+        {
+          body: { user, expenseData }
+        }
+      );
 
       console.log("[UI] Expense message sent successfully");
       setShowExpenseDialog(false);
@@ -352,8 +369,9 @@ function ChatInterface() {
                   className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"
-                      }`}
+                    className={`flex gap-2 max-w-[85%] ${
+                      isUser ? "flex-row-reverse" : "flex-row"
+                    }`}
                   >
                     {showAvatar && !isUser ? (
                       <Avatar username={"AI"} />
@@ -369,21 +387,23 @@ function ChatInterface() {
                               // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
                               <div key={i}>
                                 <Card
-                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
-                                    ? "rounded-br-none"
-                                    : "rounded-bl-none border-assistant-border"
-                                    } ${part.text.startsWith("scheduled message")
+                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
+                                    isUser
+                                      ? "rounded-br-none"
+                                      : "rounded-bl-none border-assistant-border"
+                                  } ${
+                                    part.text.startsWith("scheduled message")
                                       ? "border-accent/50"
                                       : ""
-                                    } relative`}
+                                  } relative`}
                                 >
                                   {part.text.startsWith(
                                     "scheduled message"
                                   ) && (
-                                      <span className="absolute -top-3 -left-2 text-base">
-                                        🕒
-                                      </span>
-                                    )}
+                                    <span className="absolute -top-3 -left-2 text-base">
+                                      🕒
+                                    </span>
+                                  )}
                                   <MemoizedMarkdown
                                     id={`${m.id}-${i}`}
                                     content={part.text.replace(
@@ -393,8 +413,9 @@ function ChatInterface() {
                                   />
                                 </Card>
                                 <p
-                                  className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"
-                                    }`}
+                                  className={`text-xs text-muted-foreground mt-1 ${
+                                    isUser ? "text-right" : "text-left"
+                                  }`}
                                 >
                                   {formatTime(
                                     m.metadata?.createdAt

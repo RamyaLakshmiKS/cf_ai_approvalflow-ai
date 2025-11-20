@@ -50,6 +50,7 @@ CREATE TABLE receipt_uploads (
   FOREIGN KEY (expense_request_id) REFERENCES expense_requests(id) ON DELETE CASCADE
 );
 ```
+
 **Table Definition:**
 
 ```sql
@@ -83,6 +84,7 @@ CREATE INDEX idx_expense_status_employee ON expense_requests(status, employee_id
 ```
 
 **Why This Is Sufficient for Demo:**
+
 - ✅ Tracks all essential expense data (amount, category, description)
 - ✅ Supports auto-approval logic (employee_level, amount, status)
 - ✅ Handles manager escalation (escalation_reason, manager_id)
@@ -92,8 +94,7 @@ CREATE INDEX idx_expense_status_employee ON expense_requests(status, employee_id
 
 #### C. Expense Category & Policy Table
 
- Policies are read directly from the employee handbook using the AI search tool.
----
+## Policies are read directly from the employee handbook using the AI search tool.
 
 ## 2. Ideal Workflow for Expense Reimbursement
 
@@ -404,7 +405,7 @@ interface ReceiptUploadRequest {
    });
    ```
 
-4. **Parse & Validate Extracted Data**
+3. **Parse & Validate Extracted Data**
 
    ```typescript
    const extracted = JSON.parse(ocrResponse.response);
@@ -427,7 +428,7 @@ interface ReceiptUploadRequest {
      .run();
    ```
 
-5. **Return Result**
+4. **Return Result**
    ```typescript
    return {
      receipt_id: receiptId,
@@ -446,6 +447,7 @@ interface ReceiptUploadRequest {
 **Design Philosophy:** Use **Cloudflare Workflows** for expense validation. Workflows provides built-in orchestration, automatic retries, and state persistence - perfect for multi-step validation logic.
 
 **Workflow Architecture:**
+
 - ✅ **Main Chat Agent** (`src/server.ts`) - Handles user conversation
 - ✅ **ExpenseValidation Workflow** (`src/expense-validation-workflow.ts`) - Orchestrates validation steps
 - ✅ **Automatic Retries** - Each step retries on failure
@@ -454,14 +456,14 @@ interface ReceiptUploadRequest {
 
 **Why Workflows Instead of Separate Agent:**
 
-| Aspect | Separate Agent | Cloudflare Workflow |
-|--------|----------------|---------------------|
-| Purpose | General AI reasoning | Multi-step orchestration |
-| Retries | Manual implementation | Built-in automatic retries |
-| Observability | Agent logs | Named, trackable steps |
-| State Persistence | Must implement manually | Built-in across steps |
-| Complexity | Requires agent management | Simple step-based model |
-| Best For | Complex AI reasoning | Sequential validation logic |
+| Aspect            | Separate Agent            | Cloudflare Workflow         |
+| ----------------- | ------------------------- | --------------------------- |
+| Purpose           | General AI reasoning      | Multi-step orchestration    |
+| Retries           | Manual implementation     | Built-in automatic retries  |
+| Observability     | Agent logs                | Named, trackable steps      |
+| State Persistence | Must implement manually   | Built-in across steps       |
+| Complexity        | Requires agent management | Simple step-based model     |
+| Best For          | Complex AI reasoning      | Sequential validation logic |
 
 #### Workflow Step Diagram
 
@@ -563,7 +565,11 @@ Output: {
 Create a Cloudflare Workflow that orchestrates validation steps:
 
 ```typescript
-import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from "cloudflare:workers";
+import {
+  WorkflowEntrypoint,
+  WorkflowStep,
+  WorkflowEvent
+} from "cloudflare:workers";
 import type { Env } from "./types";
 import {
   search_employee_handbook,
@@ -606,13 +612,17 @@ interface ValidationResult {
  * Multi-step workflow for validating expense requests.
  * Each step is automatically retried on failure and tracked for observability.
  */
-export class ExpenseValidationWorkflow extends WorkflowEntrypoint<Env, ExpenseValidationParams> {
-
+export class ExpenseValidationWorkflow extends WorkflowEntrypoint<
+  Env,
+  ExpenseValidationParams
+> {
   async run(event: WorkflowEvent<ExpenseValidationParams>, step: WorkflowStep) {
     const params = event.params;
     const violations: Array<{ policy: string; message: string }> = [];
 
-    console.log(`[WORKFLOW] Starting validation for $${params.amount} ${params.category}`);
+    console.log(
+      `[WORKFLOW] Starting validation for $${params.amount} ${params.category}`
+    );
 
     // Build tool context
     const toolContext = {
@@ -622,18 +632,24 @@ export class ExpenseValidationWorkflow extends WorkflowEntrypoint<Env, ExpenseVa
 
     // STEP 1: Get employee info
     const employee = await step.do("get employee info", async () => {
-      return await get_current_user.execute({
-        employee_id: params.employee_id
-      }, toolContext);
+      return await get_current_user.execute(
+        {
+          employee_id: params.employee_id
+        },
+        toolContext
+      );
     });
 
     console.log(`[WORKFLOW] Employee level: ${employee.employee_level}`);
 
     // STEP 2: Query handbook for auto-approval limits
     const limitQuery = await step.do("query auto-approval limits", async () => {
-      return await search_employee_handbook.execute({
-        query: `What is the auto-approval limit for ${employee.employee_level} employee ${params.category} expenses?`
-      }, toolContext);
+      return await search_employee_handbook.execute(
+        {
+          query: `What is the auto-approval limit for ${employee.employee_level} employee ${params.category} expenses?`
+        },
+        toolContext
+      );
     });
 
     console.log(`[WORKFLOW] Handbook response:`, limitQuery);
@@ -653,33 +669,52 @@ export class ExpenseValidationWorkflow extends WorkflowEntrypoint<Env, ExpenseVa
     });
 
     // STEP 4: Query and check receipt requirements
-    const receiptPolicy = await step.do("query receipt requirements", async () => {
-      return await search_employee_handbook.execute({
-        query: "Are receipts required for expenses over $75?"
-      }, toolContext);
-    });
+    const receiptPolicy = await step.do(
+      "query receipt requirements",
+      async () => {
+        return await search_employee_handbook.execute(
+          {
+            query: "Are receipts required for expenses over $75?"
+          },
+          toolContext
+        );
+      }
+    );
 
     await step.do("check receipt requirement", async () => {
       if (params.amount > 75 && !params.has_receipt) {
         violations.push({
           policy: "missing_receipt",
-          message: "Receipt is required for expenses over $75 per company policy (Section 6.1)."
+          message:
+            "Receipt is required for expenses over $75 per company policy (Section 6.1)."
         });
       }
       return { checked: true };
     });
 
     // STEP 5: Check for non-reimbursable items
-    const nonReimbursableQuery = await step.do("query non-reimbursable items", async () => {
-      return await search_employee_handbook.execute({
-        query: `Is a ${params.category} expense for "${params.description}" reimbursable? What expenses are not reimbursable?`
-      }, toolContext);
-    });
+    const nonReimbursableQuery = await step.do(
+      "query non-reimbursable items",
+      async () => {
+        return await search_employee_handbook.execute(
+          {
+            query: `Is a ${params.category} expense for "${params.description}" reimbursable? What expenses are not reimbursable?`
+          },
+          toolContext
+        );
+      }
+    );
 
     await step.do("check non-reimbursable patterns", async () => {
       const nonReimbursableKeywords = [
-        'alcohol', 'parking ticket', 'speeding ticket', 'mini-bar',
-        'movie rental', 'family', 'spouse', 'personal'
+        "alcohol",
+        "parking ticket",
+        "speeding ticket",
+        "mini-bar",
+        "movie rental",
+        "family",
+        "spouse",
+        "personal"
       ];
 
       const descriptionLower = params.description.toLowerCase();
@@ -696,14 +731,20 @@ export class ExpenseValidationWorkflow extends WorkflowEntrypoint<Env, ExpenseVa
     });
 
     // STEP 6: Check daily limits for meals
-    if (params.category === 'meals') {
-      const todayExpenses = await step.do("query today's meal expenses", async () => {
-        return await get_expense_history.execute({
-          employee_id: params.employee_id,
-          timeframe: 'today',
-          category: 'meals'
-        }, toolContext);
-      });
+    if (params.category === "meals") {
+      const todayExpenses = await step.do(
+        "query today's meal expenses",
+        async () => {
+          return await get_expense_history.execute(
+            {
+              employee_id: params.employee_id,
+              timeframe: "today",
+              category: "meals"
+            },
+            toolContext
+          );
+        }
+      );
 
       await step.do("check daily meal limit", async () => {
         const dailyMealLimit = 75; // Per diem from handbook
@@ -720,40 +761,55 @@ export class ExpenseValidationWorkflow extends WorkflowEntrypoint<Env, ExpenseVa
     }
 
     // STEP 7: Make final decision
-    const result = await step.do("make final decision", async (): Promise<ValidationResult> => {
-      const canAutoApprove = violations.length === 0 && params.amount <= autoApprovalLimit;
-      const requiresEscalation = params.amount > autoApprovalLimit || violations.some(v =>
-        v.policy === "exceeds_auto_approval_limit"
-      );
+    const result = await step.do(
+      "make final decision",
+      async (): Promise<ValidationResult> => {
+        const canAutoApprove =
+          violations.length === 0 && params.amount <= autoApprovalLimit;
+        const requiresEscalation =
+          params.amount > autoApprovalLimit ||
+          violations.some((v) => v.policy === "exceeds_auto_approval_limit");
 
-      let recommendation: "AUTO_APPROVE" | "ESCALATE_TO_MANAGER" | "DENY";
-      if (violations.some(v => v.policy === "non_reimbursable_item" || v.policy === "missing_receipt")) {
-        recommendation = "DENY";
-      } else if (requiresEscalation) {
-        recommendation = "ESCALATE_TO_MANAGER";
-      } else {
-        recommendation = "AUTO_APPROVE";
-      }
-
-      console.log(`[WORKFLOW] Decision: ${recommendation}, Violations: ${violations.length}`);
-
-      return {
-        is_valid: violations.length === 0,
-        can_auto_approve: canAutoApprove,
-        requires_escalation: requiresEscalation,
-        violations,
-        auto_approval_limit: autoApprovalLimit,
-        employee_level: employee.employee_level,
-        recommendation,
-        checks_performed: {
-          amount_check: params.amount <= autoApprovalLimit ? "pass" : "fail",
-          receipt_check: params.amount > 75
-            ? (params.has_receipt ? "pass" : "fail")
-            : "not_required",
-          policy_violations: violations.map(v => v.policy)
+        let recommendation: "AUTO_APPROVE" | "ESCALATE_TO_MANAGER" | "DENY";
+        if (
+          violations.some(
+            (v) =>
+              v.policy === "non_reimbursable_item" ||
+              v.policy === "missing_receipt"
+          )
+        ) {
+          recommendation = "DENY";
+        } else if (requiresEscalation) {
+          recommendation = "ESCALATE_TO_MANAGER";
+        } else {
+          recommendation = "AUTO_APPROVE";
         }
-      };
-    });
+
+        console.log(
+          `[WORKFLOW] Decision: ${recommendation}, Violations: ${violations.length}`
+        );
+
+        return {
+          is_valid: violations.length === 0,
+          can_auto_approve: canAutoApprove,
+          requires_escalation: requiresEscalation,
+          violations,
+          auto_approval_limit: autoApprovalLimit,
+          employee_level: employee.employee_level,
+          recommendation,
+          checks_performed: {
+            amount_check: params.amount <= autoApprovalLimit ? "pass" : "fail",
+            receipt_check:
+              params.amount > 75
+                ? params.has_receipt
+                  ? "pass"
+                  : "fail"
+                : "not_required",
+            policy_violations: violations.map((v) => v.policy)
+          }
+        };
+      }
+    );
 
     return result;
   }
@@ -787,7 +843,8 @@ const validate_expense_with_workflow: Tool = {
       },
       category: {
         type: "string",
-        description: "Expense category: meals, travel, home_office, training, software, supplies"
+        description:
+          "Expense category: meals, travel, home_office, training, software, supplies"
       },
       description: {
         type: "string",
@@ -817,7 +874,7 @@ const validate_expense_with_workflow: Tool = {
       params: {
         employee_id: params.employee_id,
         amount: params.amount,
-        currency: params.currency || 'USD',
+        currency: params.currency || "USD",
         category: params.category,
         description: params.description,
         has_receipt: params.has_receipt,
@@ -889,14 +946,14 @@ to your manager for approval since it exceeds your auto-approval limit."
 
 **vs. Separate Agent or Tool:**
 
-| Aspect | Single Tool | Separate Agent | Cloudflare Workflow |
-|--------|-------------|----------------|---------------------|
-| Orchestration | Manual | Agent reasoning | Built-in step-based |
-| Retries | Manual | Manual | Automatic per step |
-| Observability | Console logs | Agent logs | Named steps, trackable |
-| State Persistence | None | Durable Object | Built-in across steps |
-| Error Recovery | Try/catch | Try/catch | Automatic retry + checkpoint |
-| Best For | Simple checks | AI reasoning | Multi-step validation |
+| Aspect            | Single Tool   | Separate Agent  | Cloudflare Workflow          |
+| ----------------- | ------------- | --------------- | ---------------------------- |
+| Orchestration     | Manual        | Agent reasoning | Built-in step-based          |
+| Retries           | Manual        | Manual          | Automatic per step           |
+| Observability     | Console logs  | Agent logs      | Named steps, trackable       |
+| State Persistence | None          | Durable Object  | Built-in across steps        |
+| Error Recovery    | Try/catch     | Try/catch       | Automatic retry + checkpoint |
+| Best For          | Simple checks | AI reasoning    | Multi-step validation        |
 
 #### wrangler.jsonc Configuration
 
@@ -1402,6 +1459,7 @@ export const ExpenseHistory: React.FC = () => {
 ### 5.1 Tool Architecture Overview
 
 **Simplified Approach:** Instead of many specialized tools, use:
+
 1. **Simple database query tools** (get employee, get expenses)
 2. **Existing handbook search tool** (already implemented)
 3. **One LLM agent** that orchestrates validation logic
@@ -1418,7 +1476,8 @@ export const ExpenseHistory: React.FC = () => {
 // Tool 1: Get Expense History
 const get_expense_history: Tool = {
   name: "get_expense_history",
-  description: "Retrieves expense history for an employee to check daily/monthly spending limits.",
+  description:
+    "Retrieves expense history for an employee to check daily/monthly spending limits.",
   parameters: {
     type: "object",
     properties: {
@@ -1433,7 +1492,8 @@ const get_expense_history: Tool = {
       },
       category: {
         type: "string",
-        description: "Optional: filter by expense category (meals, travel, etc.)"
+        description:
+          "Optional: filter by expense category (meals, travel, etc.)"
       }
     },
     required: ["employee_id", "timeframe"]
@@ -1445,7 +1505,9 @@ const get_expense_history: Tool = {
       category?: string;
     };
 
-    console.log(`[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`);
+    console.log(
+      `[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`
+    );
 
     let timeCondition = "";
     const now = Math.floor(Date.now() / 1000);
@@ -1456,11 +1518,11 @@ const get_expense_history: Tool = {
         timeCondition = `AND created_at >= ${startOfDay}`;
         break;
       case "this_week":
-        const startOfWeek = now - (7 * 86400);
+        const startOfWeek = now - 7 * 86400;
         timeCondition = `AND created_at >= ${startOfWeek}`;
         break;
       case "this_month":
-        const startOfMonth = now - (30 * 86400);
+        const startOfMonth = now - 30 * 86400;
         timeCondition = `AND created_at >= ${startOfMonth}`;
         break;
     }
@@ -1479,9 +1541,14 @@ const get_expense_history: Tool = {
       .bind(...bindings)
       .all();
 
-    const total = results.results.reduce((sum, exp: any) => sum + exp.amount, 0);
+    const total = results.results.reduce(
+      (sum, exp: any) => sum + exp.amount,
+      0
+    );
 
-    console.log(`[TOOL] Found ${results.results.length} expenses, total: $${total}`);
+    console.log(
+      `[TOOL] Found ${results.results.length} expenses, total: $${total}`
+    );
 
     return {
       expenses: results.results,
@@ -1501,14 +1568,16 @@ const validate_expense_policy: Tool = {
 // Tool 3: Submit Expense Request
 const submit_expense_request: Tool = {
   name: "submit_expense_request",
-  description: "Creates an expense reimbursement request in the database with the validation status.",
+  description:
+    "Creates an expense reimbursement request in the database with the validation status.",
   parameters: {
     type: "object",
     properties: {
       employee_id: { type: "string" },
       category: {
         type: "string",
-        description: "Expense category: meals, travel, home_office, training, software, supplies"
+        description:
+          "Expense category: meals, travel, home_office, training, software, supplies"
       },
       amount: { type: "number" },
       currency: { type: "string" },
@@ -1542,59 +1611,69 @@ const submit_expense_request: Tool = {
     // Get employee and manager info (same pattern as submit_pto_request)
     const employee = await context.env.APP_DB.prepare(
       "SELECT manager_id, employee_level FROM users WHERE id = ?"
-    ).bind(params.employee_id).first();
+    )
+      .bind(params.employee_id)
+      .first();
 
     if (!employee) {
       throw new Error("Employee not found");
     }
 
     // Insert expense request
-    await context.env.APP_DB.prepare(`
+    await context.env.APP_DB.prepare(
+      `
       INSERT INTO expense_requests (
         id, employee_id, manager_id, category, amount, currency,
         description, status, auto_approved, escalation_reason,
         employee_level, ai_validation_status, submission_method
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      params.employee_id,
-      employee.manager_id,
-      params.category,
-      params.amount,
-      params.currency || 'USD',
-      params.description,
-      params.status,
-      params.auto_approved ? 1 : 0,
-      params.escalation_reason || null,
-      params.employee_level || employee.employee_level,
-      params.ai_validation_status || 'validated',
-      'chat_ai'
-    ).run();
+    `
+    )
+      .bind(
+        id,
+        params.employee_id,
+        employee.manager_id,
+        params.category,
+        params.amount,
+        params.currency || "USD",
+        params.description,
+        params.status,
+        params.auto_approved ? 1 : 0,
+        params.escalation_reason || null,
+        params.employee_level || employee.employee_level,
+        params.ai_validation_status || "validated",
+        "chat_ai"
+      )
+      .run();
 
     // Log audit event (same pattern as PTO)
-    await log_audit_event.execute({
-      entity_type: "expense_request",
-      entity_id: id,
-      action: "created",
-      user_id: params.employee_id,
-      details: {
-        category: params.category,
-        amount: params.amount,
-        status: params.status,
-        auto_approved: params.auto_approved
-      }
-    }, context);
+    await log_audit_event.execute(
+      {
+        entity_type: "expense_request",
+        entity_id: id,
+        action: "created",
+        user_id: params.employee_id,
+        details: {
+          category: params.category,
+          amount: params.amount,
+          status: params.status,
+          auto_approved: params.auto_approved
+        }
+      },
+      context
+    );
 
     console.log(`[TOOL] Expense created: ${id}, status: ${params.status}`);
 
     return {
       request_id: id,
       status: params.status,
-      message: params.status === 'auto_approved'
-        ? `Expense approved automatically!`
-        : params.status === 'pending'
-        ? `Expense submitted for manager review.`
-        : `Expense request denied.`
+      message:
+        params.status === "auto_approved"
+          ? `Expense approved automatically!`
+          : params.status === "pending"
+            ? `Expense submitted for manager review.`
+            : `Expense request denied.`
     };
   }
 };
@@ -1602,7 +1681,8 @@ const submit_expense_request: Tool = {
 // Tool 4: Approve Expense Request (Manager Only)
 const approve_expense_request: Tool = {
   name: "approve_expense_request",
-  description: "Approves a pending expense request. Only managers can approve expenses.",
+  description:
+    "Approves a pending expense request. Only managers can approve expenses.",
   parameters: {
     type: "object",
     properties: {
@@ -1620,22 +1700,31 @@ const approve_expense_request: Tool = {
   execute: async (params, context: ToolContext) => {
     const now = Math.floor(Date.now() / 1000);
 
-    console.log(`[TOOL] approve_expense_request: ${params.expense_id} by ${params.approver_id}`);
+    console.log(
+      `[TOOL] approve_expense_request: ${params.expense_id} by ${params.approver_id}`
+    );
 
-    await context.env.APP_DB.prepare(`
+    await context.env.APP_DB.prepare(
+      `
       UPDATE expense_requests
       SET status = 'approved', approved_at = ?
       WHERE id = ? AND status = 'pending'
-    `).bind(now, params.expense_id).run();
+    `
+    )
+      .bind(now, params.expense_id)
+      .run();
 
     // Log audit event
-    await log_audit_event.execute({
-      entity_type: "expense_request",
-      entity_id: params.expense_id,
-      action: "approved",
-      user_id: params.approver_id,
-      details: { approved_at: now }
-    }, context);
+    await log_audit_event.execute(
+      {
+        entity_type: "expense_request",
+        entity_id: params.expense_id,
+        action: "approved",
+        user_id: params.approver_id,
+        details: { approved_at: now }
+      },
+      context
+    );
 
     return { success: true, message: "Expense approved!" };
   }
@@ -1644,7 +1733,8 @@ const approve_expense_request: Tool = {
 // Tool 5: Deny Expense Request (Manager Only)
 const deny_expense_request: Tool = {
   name: "deny_expense_request",
-  description: "Denies a pending expense request with a reason. Only managers can deny expenses.",
+  description:
+    "Denies a pending expense request with a reason. Only managers can deny expenses.",
   parameters: {
     type: "object",
     properties: {
@@ -1664,22 +1754,31 @@ const deny_expense_request: Tool = {
     required: ["expense_id", "approver_id", "reason"]
   },
   execute: async (params, context: ToolContext) => {
-    console.log(`[TOOL] deny_expense_request: ${params.expense_id} by ${params.approver_id}`);
+    console.log(
+      `[TOOL] deny_expense_request: ${params.expense_id} by ${params.approver_id}`
+    );
 
-    await context.env.APP_DB.prepare(`
+    await context.env.APP_DB.prepare(
+      `
       UPDATE expense_requests
       SET status = 'denied', escalation_reason = ?
       WHERE id = ? AND status = 'pending'
-    `).bind(params.reason, params.expense_id).run();
+    `
+    )
+      .bind(params.reason, params.expense_id)
+      .run();
 
     // Log audit event
-    await log_audit_event.execute({
-      entity_type: "expense_request",
-      entity_id: params.expense_id,
-      action: "denied",
-      user_id: params.approver_id,
-      details: { reason: params.reason }
-    }, context);
+    await log_audit_event.execute(
+      {
+        entity_type: "expense_request",
+        entity_id: params.expense_id,
+        action: "denied",
+        user_id: params.approver_id,
+        details: { reason: params.reason }
+      },
+      context
+    );
 
     return { success: true, message: "Expense denied." };
   }
@@ -1707,10 +1806,10 @@ export const tools: Record<string, Tool> = {
 
   // NEW: Expense tools
   get_expense_history,
-  validate_expense_with_workflow,  // ← Invokes validation workflow
-  submit_expense_request,          // ← Store in database
-  approve_expense_request,         // ← Manager action
-  deny_expense_request             // ← Manager action
+  validate_expense_with_workflow, // ← Invokes validation workflow
+  submit_expense_request, // ← Store in database
+  approve_expense_request, // ← Manager action
+  deny_expense_request // ← Manager action
 };
 
 export function getToolDescriptions(): string {
@@ -2283,6 +2382,7 @@ please provide additional context and escalate to your manager."
 **Decision:** Use **Cloudflare Workflows** for expense validation instead of a separate agent or monolithic tool.
 
 **Rationale:**
+
 1. **Perfect fit for sequential validation** - Expense validation is a clear multi-step process
 2. **Built-in resilience** - Each step (handbook query, DB query) automatically retries on failure
 3. **Observable execution** - Each validation check is a named, trackable step
@@ -2291,6 +2391,7 @@ please provide additional context and escalate to your manager."
 6. **Matches Cloudflare's recommended pattern** - Workflows designed exactly for this use case
 
 **Workflow Steps:**
+
 1. Get employee info (DB query)
 2. Query auto-approval limits (handbook search)
 3. Check amount vs limit (validation logic)

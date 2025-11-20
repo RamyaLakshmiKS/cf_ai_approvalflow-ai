@@ -392,7 +392,8 @@ const validate_pto_policy: Tool = {
     };
 
     // Use employee_id from params or default to authenticated user
-    const employeeId = (params.employee_id as string | undefined) || context.userId;
+    const employeeId =
+      (params.employee_id as string | undefined) || context.userId;
 
     console.log("[TOOL] validate_pto_policy called with:", {
       employee_id: employeeId,
@@ -418,7 +419,10 @@ const validate_pto_policy: Tool = {
     }
 
     // Get balance
-    const balance = await get_pto_balance.execute({ employee_id: employeeId }, context);
+    const balance = await get_pto_balance.execute(
+      { employee_id: employeeId },
+      context
+    );
 
     // Calculate business days
     const businessDays = (await calculate_business_days.execute(
@@ -578,7 +582,8 @@ const submit_pto_request: Tool = {
     };
 
     // Use employee_id from params or default to authenticated user
-    const employeeId = (params.employee_id as string | undefined) || context.userId;
+    const employeeId =
+      (params.employee_id as string | undefined) || context.userId;
 
     const requestId = crypto.randomUUID();
     console.log("[TOOL] submit_pto_request called with:", {
@@ -718,12 +723,17 @@ const process_receipt_image: Tool = {
     }
 
     // Otherwise processing should have been done during upload
-    console.log("[TOOL] process_receipt_image - Receipt status:", receipt.ocr_status);
+    console.log(
+      "[TOOL] process_receipt_image - Receipt status:",
+      receipt.ocr_status
+    );
     return {
       receipt_id: receipt.id,
       expense_request_id: receipt.expense_request_id,
       status: receipt.ocr_status,
-      extracted_data: receipt.extracted_data ? JSON.parse(receipt.extracted_data) : null,
+      extracted_data: receipt.extracted_data
+        ? JSON.parse(receipt.extracted_data)
+        : null,
       error: receipt.processing_errors
     };
   }
@@ -751,12 +761,14 @@ const get_receipt_data: Tool = {
     const { receipt_id } = params as { receipt_id: string };
     console.log("[TOOL] get_receipt_data called for receipt:", receipt_id);
 
-    const receipt = await context.env.APP_DB.prepare(`
+    const receipt = await context.env.APP_DB.prepare(
+      `
       SELECT r.*, e.employee_id
       FROM receipt_uploads r
       JOIN expense_requests e ON r.expense_request_id = e.id
       WHERE r.id = ?
-    `)
+    `
+    )
       .bind(receipt_id)
       .first<{
         id: string;
@@ -787,7 +799,9 @@ const get_receipt_data: Tool = {
       file_type: receipt.file_type,
       file_size: receipt.file_size,
       ocr_status: receipt.ocr_status,
-      extracted_data: receipt.extracted_data ? JSON.parse(receipt.extracted_data) : null,
+      extracted_data: receipt.extracted_data
+        ? JSON.parse(receipt.extracted_data)
+        : null,
       processing_errors: receipt.processing_errors
     };
   }
@@ -823,7 +837,8 @@ const show_expense_dialog: Tool = {
  */
 const get_expense_history: Tool = {
   name: "get_expense_history",
-  description: "Retrieves expense history for an employee to check daily/monthly spending limits.",
+  description:
+    "Retrieves expense history for an employee to check daily/monthly spending limits.",
   parameters: {
     type: "object",
     properties: {
@@ -838,7 +853,8 @@ const get_expense_history: Tool = {
       },
       category: {
         type: "string",
-        description: "Optional: filter by expense category (meals, travel, etc.)"
+        description:
+          "Optional: filter by expense category (meals, travel, etc.)"
       }
     },
     required: ["employee_id", "timeframe"]
@@ -850,7 +866,9 @@ const get_expense_history: Tool = {
       category?: string;
     };
 
-    console.log(`[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`);
+    console.log(
+      `[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`
+    );
 
     let timeCondition = "";
     const now = Math.floor(Date.now() / 1000);
@@ -861,11 +879,11 @@ const get_expense_history: Tool = {
         timeCondition = `AND created_at >= ${startOfDay}`;
         break;
       case "this_week":
-        const startOfWeek = now - (7 * 86400);
+        const startOfWeek = now - 7 * 86400;
         timeCondition = `AND created_at >= ${startOfWeek}`;
         break;
       case "this_month":
-        const startOfMonth = now - (30 * 86400);
+        const startOfMonth = now - 30 * 86400;
         timeCondition = `AND created_at >= ${startOfMonth}`;
         break;
     }
@@ -884,9 +902,14 @@ const get_expense_history: Tool = {
       .bind(...bindings)
       .all();
 
-    const total = results.results.reduce((sum, exp: any) => sum + exp.amount, 0);
+    const total = results.results.reduce(
+      (sum, exp: any) => sum + exp.amount,
+      0
+    );
 
-    console.log(`[TOOL] Found ${results.results.length} expenses, total: $${total}`);
+    console.log(
+      `[TOOL] Found ${results.results.length} expenses, total: $${total}`
+    );
 
     return {
       expenses: results.results,
@@ -903,7 +926,8 @@ const get_expense_history: Tool = {
  */
 const validate_expense_policy: Tool = {
   name: "validate_expense_policy",
-  description: "Validates an expense request against all company policies from the handbook: auto-approval limits, receipt requirements, non-reimbursable items, and daily limits. Use this BEFORE submitting an expense. The employee_id is optional and defaults to the current authenticated user.",
+  description:
+    "Validates an expense request against all company policies from the handbook: auto-approval limits, receipt requirements, non-reimbursable items, and daily limits. Use this BEFORE submitting an expense. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
@@ -917,7 +941,8 @@ const validate_expense_policy: Tool = {
       },
       category: {
         type: "string",
-        description: "Expense category: meals, travel, home_office, training, software, supplies"
+        description:
+          "Expense category: meals, travel, home_office, training, software, supplies"
       },
       description: {
         type: "string",
@@ -929,7 +954,8 @@ const validate_expense_policy: Tool = {
       },
       receipt_data: {
         type: "object",
-        description: "Optional: Extracted data from receipt (merchant, date, etc.)"
+        description:
+          "Optional: Extracted data from receipt (merchant, date, etc.)"
       }
     },
     required: ["amount", "category", "has_receipt"]
@@ -941,11 +967,16 @@ const validate_expense_policy: Tool = {
       category: string;
       description?: string;
       has_receipt: boolean;
-      receipt_data?: { merchant: string; date: string; extracted_amount: number };
+      receipt_data?: {
+        merchant: string;
+        date: string;
+        extracted_amount: number;
+      };
     };
 
     // Use employee_id from params or default to authenticated user
-    const employeeId = (params.employee_id as string | undefined) || context.userId;
+    const employeeId =
+      (params.employee_id as string | undefined) || context.userId;
 
     console.log("[TOOL] validate_expense_policy called with:", {
       employee_id: employeeId,
@@ -970,11 +1001,17 @@ const validate_expense_policy: Tool = {
     console.log("[TOOL] Employee level:", employee.employee_level);
 
     // Step 1: Query handbook for auto-approval limits
-    const limitQuery = await search_employee_handbook.execute({
-      query: `What is the auto-approval limit for ${employee.employee_level} employee ${category} expenses?`
-    }, context) as { answer: string };
+    const limitQuery = (await search_employee_handbook.execute(
+      {
+        query: `What is the auto-approval limit for ${employee.employee_level} employee ${category} expenses?`
+      },
+      context
+    )) as { answer: string };
 
-    console.log("[TOOL] Handbook auto-approval limit response:", limitQuery.answer);
+    console.log(
+      "[TOOL] Handbook auto-approval limit response:",
+      limitQuery.answer
+    );
 
     // Parse limit from handbook (fallback: junior=$100, senior=$500)
     const autoApprovalLimit = employee.employee_level === "senior" ? 500 : 100;
@@ -988,31 +1025,50 @@ const validate_expense_policy: Tool = {
     }
 
     // Step 3: Query handbook for receipt requirements
-    const receiptQuery = await search_employee_handbook.execute({
-      query: "Are receipts required for expenses over $75?"
-    }, context) as { answer: string };
+    const receiptQuery = (await search_employee_handbook.execute(
+      {
+        query: "Are receipts required for expenses over $75?"
+      },
+      context
+    )) as { answer: string };
 
-    console.log("[TOOL] Handbook receipt policy response:", receiptQuery.answer);
+    console.log(
+      "[TOOL] Handbook receipt policy response:",
+      receiptQuery.answer
+    );
 
     // Step 4: Check receipt requirement
     if (amount > 75 && !has_receipt) {
       violations.push({
         policy: "missing_receipt",
-        message: "Receipt is required for expenses over $75 per company policy (Section 6.1)."
+        message:
+          "Receipt is required for expenses over $75 per company policy (Section 6.1)."
       });
     }
 
     // Step 5: Query handbook for non-reimbursable items
-    const nonReimbursableQuery = await search_employee_handbook.execute({
-      query: `Is a ${category} expense for "${description || category}" reimbursable? What expenses are not reimbursable?`
-    }, context) as { answer: string };
+    const nonReimbursableQuery = (await search_employee_handbook.execute(
+      {
+        query: `Is a ${category} expense for "${description || category}" reimbursable? What expenses are not reimbursable?`
+      },
+      context
+    )) as { answer: string };
 
-    console.log("[TOOL] Handbook non-reimbursable response:", nonReimbursableQuery.answer);
+    console.log(
+      "[TOOL] Handbook non-reimbursable response:",
+      nonReimbursableQuery.answer
+    );
 
     // Step 6: Check for non-reimbursable patterns
     const nonReimbursableKeywords = [
-      'alcohol', 'parking ticket', 'speeding ticket', 'mini-bar',
-      'movie rental', 'family', 'spouse', 'personal'
+      "alcohol",
+      "parking ticket",
+      "speeding ticket",
+      "mini-bar",
+      "movie rental",
+      "family",
+      "spouse",
+      "personal"
     ];
 
     const descriptionLower = (description || "").toLowerCase();
@@ -1027,12 +1083,15 @@ const validate_expense_policy: Tool = {
     }
 
     // Step 7: Check daily limits for meals
-    if (category === 'meals') {
-      const todayExpenses = await get_expense_history.execute({
-        employee_id: employeeId,
-        timeframe: 'today',
-        category: 'meals'
-      }, context) as { total_amount: number; count: number };
+    if (category === "meals") {
+      const todayExpenses = (await get_expense_history.execute(
+        {
+          employee_id: employeeId,
+          timeframe: "today",
+          category: "meals"
+        },
+        context
+      )) as { total_amount: number; count: number };
 
       console.log("[TOOL] Today's meal expenses:", todayExpenses.total_amount);
 
@@ -1048,13 +1107,22 @@ const validate_expense_policy: Tool = {
     }
 
     // Step 8: Make final decision
-    const canAutoApprove = violations.length === 0 && amount <= autoApprovalLimit;
-    const requiresEscalation = amount > autoApprovalLimit && !violations.some(v =>
-      v.policy === "non_reimbursable_item" || v.policy === "missing_receipt"
-    );
+    const canAutoApprove =
+      violations.length === 0 && amount <= autoApprovalLimit;
+    const requiresEscalation =
+      amount > autoApprovalLimit &&
+      !violations.some(
+        (v) =>
+          v.policy === "non_reimbursable_item" || v.policy === "missing_receipt"
+      );
 
     let recommendation: "AUTO_APPROVE" | "ESCALATE_TO_MANAGER" | "DENY";
-    if (violations.some(v => v.policy === "non_reimbursable_item" || v.policy === "missing_receipt")) {
+    if (
+      violations.some(
+        (v) =>
+          v.policy === "non_reimbursable_item" || v.policy === "missing_receipt"
+      )
+    ) {
       recommendation = "DENY";
     } else if (requiresEscalation) {
       recommendation = "ESCALATE_TO_MANAGER";
@@ -1077,10 +1145,9 @@ const validate_expense_policy: Tool = {
       recommendation,
       checks_performed: {
         amount_check: amount <= autoApprovalLimit ? "pass" : "fail",
-        receipt_check: amount > 75
-          ? (has_receipt ? "pass" : "fail")
-          : "not_required",
-        policy_violations: violations.map(v => v.policy)
+        receipt_check:
+          amount > 75 ? (has_receipt ? "pass" : "fail") : "not_required",
+        policy_violations: violations.map((v) => v.policy)
       }
     };
   }
@@ -1092,7 +1159,8 @@ const validate_expense_policy: Tool = {
  */
 const submit_expense_request: Tool = {
   name: "submit_expense_request",
-  description: "Creates an expense reimbursement request in the database with the validation status. The employee_id is optional and defaults to the current authenticated user.",
+  description:
+    "Creates an expense reimbursement request in the database with the validation status. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
@@ -1102,7 +1170,8 @@ const submit_expense_request: Tool = {
       },
       category: {
         type: "string",
-        description: "Expense category: meals, travel, home_office, training, software, supplies"
+        description:
+          "Expense category: meals, travel, home_office, training, software, supplies"
       },
       amount: { type: "number" },
       currency: { type: "string" },
@@ -1134,12 +1203,15 @@ const submit_expense_request: Tool = {
   },
   execute: async (params, context: ToolContext) => {
     // Use employee_id from params or default to authenticated user
-    const employeeId = (params.employee_id as string | undefined) || context.userId;
+    const employeeId =
+      (params.employee_id as string | undefined) || context.userId;
 
     // Get employee and manager info
     const employee = await context.env.APP_DB.prepare(
       "SELECT manager_id, employee_level FROM users WHERE id = ?"
-    ).bind(employeeId).first();
+    )
+      .bind(employeeId)
+      .first();
 
     if (!employee) {
       throw new Error("Employee not found");
@@ -1151,88 +1223,110 @@ const submit_expense_request: Tool = {
     if (params.receipt_id) {
       const receipt = await context.env.APP_DB.prepare(
         "SELECT expense_request_id FROM receipt_uploads WHERE id = ?"
-      ).bind(params.receipt_id).first<{ expense_request_id: string }>();
+      )
+        .bind(params.receipt_id)
+        .first<{ expense_request_id: string }>();
 
       if (!receipt) {
         throw new Error("Receipt not found");
       }
 
       expenseId = receipt.expense_request_id;
-      console.log(`[TOOL] submit_expense_request: Updating existing expense ${expenseId} for employee ${employeeId}`);
+      console.log(
+        `[TOOL] submit_expense_request: Updating existing expense ${expenseId} for employee ${employeeId}`
+      );
 
       // Update the existing placeholder expense request
-      await context.env.APP_DB.prepare(`
+      await context.env.APP_DB.prepare(
+        `
         UPDATE expense_requests
         SET employee_id = ?, manager_id = ?, category = ?, amount = ?, currency = ?,
             description = ?, status = ?, auto_approved = ?, escalation_reason = ?,
             employee_level = ?, ai_validation_status = ?, submission_method = ?
         WHERE id = ?
-      `).bind(
-        employeeId,
-        (employee as { manager_id: string }).manager_id,
-        params.category,
-        params.amount,
-        params.currency || 'USD',
-        params.description,
-        params.status,
-        params.auto_approved ? 1 : 0,
-        params.escalation_reason || null,
-        params.employee_level || (employee as { employee_level: string }).employee_level,
-        params.ai_validation_status || 'validated',
-        'chat_ai',
-        expenseId
-      ).run();
+      `
+      )
+        .bind(
+          employeeId,
+          (employee as { manager_id: string }).manager_id,
+          params.category,
+          params.amount,
+          params.currency || "USD",
+          params.description,
+          params.status,
+          params.auto_approved ? 1 : 0,
+          params.escalation_reason || null,
+          params.employee_level ||
+            (employee as { employee_level: string }).employee_level,
+          params.ai_validation_status || "validated",
+          "chat_ai",
+          expenseId
+        )
+        .run();
     } else {
       // No receipt - create a new expense request
       expenseId = crypto.randomUUID();
-      console.log(`[TOOL] submit_expense_request: Creating new expense ${expenseId} for employee ${employeeId}`);
+      console.log(
+        `[TOOL] submit_expense_request: Creating new expense ${expenseId} for employee ${employeeId}`
+      );
 
-      await context.env.APP_DB.prepare(`
+      await context.env.APP_DB.prepare(
+        `
         INSERT INTO expense_requests (
           id, employee_id, manager_id, category, amount, currency,
           description, status, auto_approved, escalation_reason,
           employee_level, ai_validation_status, submission_method
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        expenseId,
-        employeeId,
-        (employee as { manager_id: string }).manager_id,
-        params.category,
-        params.amount,
-        params.currency || 'USD',
-        params.description,
-        params.status,
-        params.auto_approved ? 1 : 0,
-        params.escalation_reason || null,
-        params.employee_level || (employee as { employee_level: string }).employee_level,
-        params.ai_validation_status || 'validated',
-        'chat_ai'
-      ).run();
+      `
+      )
+        .bind(
+          expenseId,
+          employeeId,
+          (employee as { manager_id: string }).manager_id,
+          params.category,
+          params.amount,
+          params.currency || "USD",
+          params.description,
+          params.status,
+          params.auto_approved ? 1 : 0,
+          params.escalation_reason || null,
+          params.employee_level ||
+            (employee as { employee_level: string }).employee_level,
+          params.ai_validation_status || "validated",
+          "chat_ai"
+        )
+        .run();
     }
 
     // Log audit event
-    await log_audit_event.execute({
-      entity_type: "expense_request",
-      entity_id: expenseId,
-      action: "created",
-      details: {
-        category: params.category,
-        amount: params.amount,
-        status: params.status,
-        auto_approved: params.auto_approved
-      }
-    }, context);
+    await log_audit_event.execute(
+      {
+        entity_type: "expense_request",
+        entity_id: expenseId,
+        action: "created",
+        details: {
+          category: params.category,
+          amount: params.amount,
+          status: params.status,
+          auto_approved: params.auto_approved
+        }
+      },
+      context
+    );
 
-    console.log(`[TOOL] Expense created: ${expenseId}, status: ${params.status}`);
+    console.log(
+      `[TOOL] Expense created: ${expenseId}, status: ${params.status}`
+    );
 
     return {
       request_id: expenseId,
       status: params.status,
-      message: params.status === 'auto_approved'
-        ? `Expense approved automatically!`
-        : params.status === 'pending'
-        ? `Expense submitted for manager review.`
-        : `Expense request denied.`
+      message:
+        params.status === "auto_approved"
+          ? `Expense approved automatically!`
+          : params.status === "pending"
+            ? `Expense submitted for manager review.`
+            : `Expense request denied.`
     };
   }
 };
