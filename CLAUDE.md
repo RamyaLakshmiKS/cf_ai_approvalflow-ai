@@ -62,23 +62,27 @@ npm test                 # Run tests with Vitest
 The model `@cf/qwen/qwen3-30b-a3b-fp8` was selected after comprehensive testing and is the ONLY Workers AI model with 100% reliable function calling support. DO NOT change this model without extensive testing.
 
 **Test Results Summary:**
+
 - Qwen3-30B: 100% success rate (10/10 tests) ✅
 - Llama 3.3 70B: 80% success rate - fails 40% on natural language queries ❌
 - All other models: 0-50% success rate ❌
 
 **Why this matters:**
+
 - Function calling reliability is critical for this application
 - Users expect tools like `get_pto_balance` and `submit_pto_request` to work every time
 - A 20% failure rate means 1 in 5 user requests fail silently
 - The ~1.5s speed difference is acceptable for reliability
 
 **Before changing:**
+
 1. Run comprehensive tests: `npx wrangler dev test-function-calling.ts --config wrangler.test.jsonc`
 2. Verify ≥95% success rate across 10+ iterations
 3. Test with production tools, not just test tools
 4. Read `FUNCTION-CALLING-TEST-RESULTS.md` for full context
 
 **Reference Files:**
+
 - Test script: `test-function-calling.ts`
 - Test results: `FUNCTION-CALLING-TEST-RESULTS.md`
 - Implementation: `src/react-agent.ts` (lines 39-84)

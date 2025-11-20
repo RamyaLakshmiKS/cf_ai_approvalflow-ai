@@ -26,6 +26,9 @@ export const Modal = ({
     : // biome-ignore lint/correctness/useHookAtTopLevel: todo
       useRef<HTMLDivElement>(null);
 
+  // Track if we've already focused on this modal open
+  const hasFocusedRef = useRef(false);
+
   // Stop site overflow when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -39,32 +42,55 @@ export const Modal = ({
     };
   }, [isOpen]);
 
-  // Tab focus
+  // Reset focus tracking when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      hasFocusedRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Tab focus and initial focus - only run once when modal opens
   useEffect(() => {
     if (!isOpen || !modalRef.current) return;
 
-    const focusableElements = modalRef.current.querySelectorAll(
-      'a, button, input, textarea, select, details, [tabindex]:not([tabindex="-1"])'
-    ) as NodeListOf<HTMLElement>;
+    // Only focus the first element once when modal opens
+    if (!hasFocusedRef.current) {
+      const focusableElements = modalRef.current.querySelectorAll(
+        'a, button, input, textarea, select, details, [tabindex]:not([tabindex="-1"])'
+      ) as NodeListOf<HTMLElement>;
 
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
-    if (firstElement) firstElement.focus();
+      const firstElement = focusableElements[0];
+      if (firstElement) {
+        firstElement.focus();
+        hasFocusedRef.current = true;
+      }
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
+        // Get fresh list of focusable elements for tab trapping
+        const currentFocusableElements = modalRef.current?.querySelectorAll(
+          'a, button, input, textarea, select, details, [tabindex]:not([tabindex="-1"])'
+        ) as NodeListOf<HTMLElement> | undefined;
+
+        if (!currentFocusableElements || currentFocusableElements.length === 0)
+          return;
+
+        const currentFirstElement = currentFocusableElements[0];
+        const currentLastElement =
+          currentFocusableElements[currentFocusableElements.length - 1];
+
         if (e.shiftKey) {
           // Shift + Tab moves focus backward
-          if (document.activeElement === firstElement) {
+          if (document.activeElement === currentFirstElement) {
             e.preventDefault();
-            lastElement.focus();
+            currentLastElement.focus();
           }
         } else {
           // Tab moves focus forward
-          if (document.activeElement === lastElement) {
+          if (document.activeElement === currentLastElement) {
             e.preventDefault();
-            firstElement.focus();
+            currentFirstElement.focus();
           }
         }
       }
@@ -77,7 +103,9 @@ export const Modal = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose, modalRef.current]);
+    // Intentionally omit onClose from deps to prevent re-running when parent re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

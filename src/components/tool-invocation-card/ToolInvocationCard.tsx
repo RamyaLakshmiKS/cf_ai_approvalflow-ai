@@ -1,4 +1,10 @@
-import { CaretDown, Robot } from "@phosphor-icons/react";
+import {
+  CaretDown,
+  Robot,
+  Spinner,
+  CheckCircle,
+  XCircle
+} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { Button } from "@/components/button/Button";
@@ -41,7 +47,7 @@ export function ToolInvocationCard({
   onSubmit
   // addToolResult
 }: ToolInvocationCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <Card className="p-4 my-3 w-full max-w-[500px] rounded-md bg-neutral-100 dark:bg-neutral-900 overflow-hidden">
@@ -57,8 +63,23 @@ export function ToolInvocationCard({
         </div>
         <h4 className="font-medium flex items-center gap-2 flex-1 text-left">
           {toolUIPart.type}
+          {!needsConfirmation && toolUIPart.state === "input-available" && (
+            <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              <Spinner size={12} className="animate-spin" />
+              Executing...
+            </span>
+          )}
           {!needsConfirmation && toolUIPart.state === "output-available" && (
-            <span className="text-xs text-[#F48120]/70">✓ Completed</span>
+            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+              <CheckCircle size={12} weight="fill" />
+              Completed
+            </span>
+          )}
+          {!needsConfirmation && toolUIPart.state === "output-error" && (
+            <span className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+              <XCircle size={12} weight="fill" />
+              Error
+            </span>
           )}
         </h4>
         <CaretDown
@@ -130,6 +151,17 @@ export function ToolInvocationCard({
                   }
                   return JSON.stringify(result, null, 2);
                 })()}
+              </pre>
+            </div>
+          )}
+
+          {!needsConfirmation && toolUIPart.state === "output-error" && (
+            <div className="mt-3 border-t border-red-200 dark:border-red-800 pt-3">
+              <h5 className="text-xs font-medium mb-1 text-red-600 dark:text-red-400">
+                Error:
+              </h5>
+              <pre className="bg-red-50 dark:bg-red-950/30 p-2 rounded-md text-xs overflow-auto whitespace-pre-wrap break-words max-w-[450px] text-red-700 dark:text-red-300">
+                {toolUIPart.errorText || "Tool execution failed"}
               </pre>
             </div>
           )}
