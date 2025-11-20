@@ -91,7 +91,7 @@ const search_employee_handbook: Tool = {
       "@cf/meta/llama-3.1-8b-instruct" as keyof AiModels,
       {
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 500
+        max_tokens: 1000
       }
     )) as { response?: string };
     console.log("[TOOL] search_employee_handbook - Got response from AI");
