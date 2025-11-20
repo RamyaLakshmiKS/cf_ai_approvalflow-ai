@@ -20,12 +20,25 @@ export type ToolContext = {
 };
 
 /**
+ * Tool streaming update callback
+ */
+export type ToolStreamCallback = (update: {
+  toolName: string;
+  toolCallId: string;
+  args: unknown;
+  result?: unknown;
+  state: "input-available" | "output-available" | "output-error";
+  error?: string;
+}) => Promise<void>;
+
+/**
  * Execute the AI agent with streaming and tool support
  */
 export async function runReActAgent(
   userMessage: string,
   conversationHistory: Array<{ role: string; content: string }>,
-  context: ToolContext
+  context: ToolContext,
+  onToolUpdate?: ToolStreamCallback
 ): Promise<{
   response: string;
   toolCalls: Array<{
@@ -80,7 +93,7 @@ export async function runReActAgent(
 
   try {
     // Manual ReAct loop for tool calling (since Workers AI doesn't support AI SDK tools well)
-    const maxIterations = 10;
+    const maxIterations = 15; // Increased to handle complex multi-tool requests
     let currentMessages = [...messages];
     let finalResponse = "";
     const toolCallsExecuted: Array<{
@@ -98,10 +111,13 @@ export async function runReActAgent(
         model,
         system:
           getSystemPrompt() +
-          `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format (note the three dashes --- are REQUIRED):
+          `\n\nIMPORTANT: When you need to call a tool, respond with ONLY the tool call - NO other text before or after:
+
 TOOL_CALL: tool_name
 PARAMETERS: {json parameters}
 ---
+
+DO NOT add any conversational text before the TOOL_CALL line. Just output the tool call.
 
 CRITICAL: For tools with optional parameters (like get_pto_balance, get_pto_history, show_expense_dialog), use an empty object {} if you want to use the default values (current user).
 Example - get_pto_balance for current user:
@@ -119,7 +135,7 @@ CRITICAL: When copying UUIDs (like receipt_id or employee_id) from user messages
 - Copy the ENTIRE UUID character-by-character without truncating or modifying
 - Check that you have all 36 characters before using the UUID
 
-When you have all the information you need, provide your final response without any tool calls.`,
+When you have all the information you need and NO MORE TOOLS are needed, provide your final response without any tool calls.`,
         messages: currentMessages,
         temperature: 0.2
       });
@@ -175,17 +191,40 @@ When you have all the information you need, provide your final response without 
           }
 
           const params = JSON.parse(paramsStr);
+          const toolCallId = crypto.randomUUID();
+
+          // Stream tool input (before execution)
+          if (onToolUpdate) {
+            await onToolUpdate({
+              toolName,
+              toolCallId,
+              args: params,
+              state: "input-available"
+            });
+          }
+
+          // Execute the tool
           const toolResult = await tool.execute(params, context);
 
           console.log(`[AGENT] Tool ${toolName} result:`, toolResult);
 
-          const toolCallId = crypto.randomUUID();
           toolCallsExecuted.push({
             toolName,
             toolCallId,
             args: params,
             result: toolResult
           });
+
+          // Stream tool output (after execution)
+          if (onToolUpdate) {
+            await onToolUpdate({
+              toolName,
+              toolCallId,
+              args: params,
+              result: toolResult,
+              state: "output-available"
+            });
+          }
 
           // Add tool result to conversation
           currentMessages.push({
@@ -215,6 +254,18 @@ When you have all the information you need, provide your final response without 
             errorMsg = `Invalid JSON format in PARAMETERS. Make sure all values are properly formatted. For numbers, use: "amount": 23.75 (not "amount":,). For strings, use quotes: "category": "meals"`;
           }
 
+          // Stream tool error
+          if (onToolUpdate && toolCallMatch) {
+            const toolCallId = crypto.randomUUID();
+            await onToolUpdate({
+              toolName: toolCallMatch[1],
+              toolCallId,
+              args: parametersMatch ? JSON.parse(parametersMatch[1]) : {},
+              state: "output-error",
+              error: errorMsg
+            });
+          }
+
           currentMessages.push({
             role: "user",
             content: `TOOL_ERROR: ${errorMsg}. Please try again with correct parameters.`
@@ -235,10 +286,19 @@ When you have all the information you need, provide your final response without 
       toolCallsExecuted.length
     );
 
+    // If we have no final response, generate a helpful default
+    if (!finalResponse.trim()) {
+      if (toolCallsExecuted.length > 0) {
+        finalResponse =
+          "I've gathered the information you requested. Let me know if you need anything else!";
+      } else {
+        finalResponse =
+          "I apologize, but I wasn't able to generate a proper response. Please try again.";
+      }
+    }
+
     return {
-      response:
-        finalResponse.trim() ||
-        "I apologize, but I wasn't able to generate a proper response. Please try again.",
+      response: finalResponse.trim(),
       toolCalls: toolCallsExecuted,
       steps
     };

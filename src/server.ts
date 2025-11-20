@@ -228,12 +228,81 @@ export class Chat extends AIChatAgent<Env> {
         userId: userId
       };
 
-      // Run the ReAct agent
+      // Track streamed tool calls
+      const streamedToolCalls = new Map<
+        string,
+        {
+          toolName: string;
+          toolCallId: string;
+          args: unknown;
+          result?: unknown;
+          state: string;
+          error?: string;
+        }
+      >();
+
+      // Create a single streaming message ID that will be updated
+      // Use "assistant-" prefix so frontend renders tool cards (app.tsx line 432)
+      const streamingMessageId = `assistant-${generateId()}`;
+
+      // Run the ReAct agent with streaming callback
       console.log("[AGENT] Starting ReAct agent");
       const result = await runReActAgent(
         textPart.text,
         conversationHistory,
-        toolContext
+        toolContext,
+        // Stream tool updates in real-time
+        async (toolUpdate) => {
+          console.log(
+            "[AGENT] Streaming tool update:",
+            toolUpdate.toolName,
+            toolUpdate.state
+          );
+
+          // Update or add to tracked calls
+          streamedToolCalls.set(toolUpdate.toolCallId, {
+            toolName: toolUpdate.toolName,
+            toolCallId: toolUpdate.toolCallId,
+            args: toolUpdate.args,
+            result: toolUpdate.result,
+            state: toolUpdate.state,
+            error: toolUpdate.error
+          });
+
+          // Build parts array with ALL tool calls so far
+          const parts: any[] = [];
+
+          // Add all tracked tool calls as parts
+          for (const toolCall of streamedToolCalls.values()) {
+            parts.push({
+              type: `tool-${toolCall.toolName}` as const,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              input: toolCall.args,
+              output: toolCall.result,
+              state: toolCall.state,
+              errorText: toolCall.error
+            });
+          }
+
+          // Update the SAME message with all parts
+          const existingMessages = this.messages.filter(
+            (m: any) => m.id !== streamingMessageId
+          );
+
+          await this.saveMessages([
+            ...existingMessages,
+            {
+              id: streamingMessageId,
+              role: "assistant",
+              parts: parts as any,
+              metadata: {
+                createdAt: new Date().toISOString(),
+                streaming: true
+              }
+            } as any
+          ]);
+        }
       );
 
       console.log(
@@ -248,7 +317,7 @@ export class Chat extends AIChatAgent<Env> {
         JSON.stringify(result.steps, null, 2)
       );
 
-      // Build message parts including tool calls
+      // Build final message parts including tool calls and response
       const parts: any[] = [];
 
       // Add tool call parts first
@@ -261,7 +330,7 @@ export class Chat extends AIChatAgent<Env> {
             toolName: toolCall.toolName,
             input: toolCall.args,
             output: toolCall.result,
-            state: "output-available" as const // Using correct state value
+            state: "output-available" as const
           });
         }
       }
@@ -272,15 +341,20 @@ export class Chat extends AIChatAgent<Env> {
         text: result.response
       });
 
-      // Save the assistant's response with tool calls
+      // Replace the streaming message with final message
+      const existingMessages = this.messages.filter(
+        (m: any) => m.id !== streamingMessageId
+      );
+
       await this.saveMessages([
-        ...this.messages,
+        ...existingMessages,
         {
-          id: generateId(),
+          id: streamingMessageId, // Reuse same ID to replace streaming message
           role: "assistant",
           parts: parts as any,
           metadata: {
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            streaming: false // Mark as complete
           }
         } as any
       ]);
