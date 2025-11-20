@@ -78,52 +78,6 @@ export async function runReActAgent(
     content: userMessage
   });
 
-  // Check if user wants to submit an expense (pattern matching)
-  const expenseKeywords = [
-    "submit an expense",
-    "expense reimbursement",
-    "submit expense",
-    "reimburse",
-    "reimbursement",
-    "upload receipt",
-    "submit receipt",
-    "expense for"
-  ];
-  const isExpenseRequest = expenseKeywords.some((keyword) =>
-    userMessage.toLowerCase().includes(keyword)
-  );
-
-  // Check if this is a submission confirmation from the dialog
-  const isExpenseSubmission =
-    userMessage.includes("I've submitted an expense:") &&
-    userMessage.includes("Receipt ID:");
-
-  // If expense request detected, trigger the dialog tool
-  if (isExpenseRequest && !isExpenseSubmission) {
-    console.log(
-      "[AGENT] Expense request detected, calling show_expense_dialog"
-    );
-
-    const toolResult = await tools.show_expense_dialog.execute({}, context);
-
-    return {
-      response:
-        "Perfect! I'm opening the expense submission form for you. You'll be able to upload your receipt and the system will automatically extract the details.",
-      toolCalls: [
-        {
-          toolName: "show_expense_dialog",
-          toolCallId: crypto.randomUUID(),
-          args: {},
-          result: toolResult
-        }
-      ],
-      steps: []
-    };
-  }
-
-  // If this is an expense submission, let the agent handle it with tools
-  // The system prompt will guide the agent to call validate_expense_policy and submit_expense_request
-
   try {
     // Manual ReAct loop for tool calling (since Workers AI doesn't support AI SDK tools well)
     const maxIterations = 10;
@@ -144,14 +98,19 @@ export async function runReActAgent(
         model,
         system:
           getSystemPrompt() +
-          `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format:
+          `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format (note the three dashes --- are REQUIRED):
 TOOL_CALL: tool_name
 PARAMETERS: {json parameters}
 ---
 
-CRITICAL: For tools with optional parameters (like get_pto_balance, get_pto_history), use an empty object {} if you want to use the default values (current user).
+CRITICAL: For tools with optional parameters (like get_pto_balance, get_pto_history, show_expense_dialog), use an empty object {} if you want to use the default values (current user).
 Example - get_pto_balance for current user:
 TOOL_CALL: get_pto_balance
+PARAMETERS: {}
+---
+
+Example - show_expense_dialog to open expense form:
+TOOL_CALL: show_expense_dialog
 PARAMETERS: {}
 ---
 
