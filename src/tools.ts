@@ -360,13 +360,13 @@ const calculate_business_days: Tool = {
 const validate_pto_policy: Tool = {
   name: "validate_pto_policy",
   description:
-    "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request.",
+    "Validates a PTO request against all company policies: balance, blackouts, and auto-approval limits. Use this before submitting a PTO request. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
       employee_id: {
         type: "string",
-        description: "Employee ID"
+        description: "Employee ID (optional, defaults to current user)"
       },
       start_date: {
         type: "string",
@@ -381,17 +381,21 @@ const validate_pto_policy: Tool = {
         description: "Reason for PTO request (optional)"
       }
     },
-    required: ["employee_id", "start_date", "end_date"]
+    required: ["start_date", "end_date"]
   },
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
-    const { employee_id, start_date, end_date } = params as {
-      employee_id: string;
+    const { start_date, end_date } = params as {
+      employee_id?: string;
       start_date: string;
       end_date: string;
       reason?: string;
     };
+
+    // Use employee_id from params or default to authenticated user
+    const employeeId = (params.employee_id as string | undefined) || context.userId;
+
     console.log("[TOOL] validate_pto_policy called with:", {
-      employee_id,
+      employee_id: employeeId,
       start_date,
       end_date
     });
@@ -402,19 +406,19 @@ const validate_pto_policy: Tool = {
     const employee = await context.env.APP_DB.prepare(
       "SELECT employee_level FROM users WHERE id = ?"
     )
-      .bind(params.employee_id)
+      .bind(employeeId)
       .first();
 
     if (!employee) {
       console.error(
         "[TOOL] validate_pto_policy - Employee not found:",
-        employee_id
+        employeeId
       );
       throw new Error("Employee not found");
     }
 
     // Get balance
-    const balance = await get_pto_balance.execute({ employee_id }, context);
+    const balance = await get_pto_balance.execute({ employee_id: employeeId }, context);
 
     // Calculate business days
     const businessDays = (await calculate_business_days.execute(
@@ -506,13 +510,13 @@ const validate_pto_policy: Tool = {
 const submit_pto_request: Tool = {
   name: "submit_pto_request",
   description:
-    "Submits a PTO request to the database after validation. Sets status based on auto-approval or escalation. Only use this AFTER validating with validate_pto_policy.",
+    "Submits a PTO request to the database after validation. Sets status based on auto-approval or escalation. Only use this AFTER validating with validate_pto_policy. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
       employee_id: {
         type: "string",
-        description: "Employee ID"
+        description: "Employee ID (optional, defaults to current user)"
       },
       start_date: {
         type: "string",
@@ -546,7 +550,6 @@ const submit_pto_request: Tool = {
       }
     },
     required: [
-      "employee_id",
       "start_date",
       "end_date",
       "total_days",
@@ -556,7 +559,6 @@ const submit_pto_request: Tool = {
   },
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const {
-      employee_id,
       start_date,
       end_date,
       total_days,
@@ -565,7 +567,7 @@ const submit_pto_request: Tool = {
       approval_type,
       validation_notes
     } = params as {
-      employee_id: string;
+      employee_id?: string;
       start_date: string;
       end_date: string;
       total_days: number;
@@ -574,9 +576,13 @@ const submit_pto_request: Tool = {
       approval_type: string;
       validation_notes?: string;
     };
+
+    // Use employee_id from params or default to authenticated user
+    const employeeId = (params.employee_id as string | undefined) || context.userId;
+
     const requestId = crypto.randomUUID();
     console.log("[TOOL] submit_pto_request called with:", {
-      employee_id,
+      employee_id: employeeId,
       total_days,
       status
     });
@@ -585,7 +591,7 @@ const submit_pto_request: Tool = {
     const employee = await context.env.APP_DB.prepare(
       "SELECT manager_id FROM users WHERE id = ?"
     )
-      .bind(params.employee_id)
+      .bind(employeeId)
       .first();
 
     // Insert PTO request
@@ -597,7 +603,7 @@ const submit_pto_request: Tool = {
     )
       .bind(
         requestId,
-        employee_id,
+        employeeId,
         (employee as { manager_id: string }).manager_id,
         start_date,
         end_date,
@@ -617,7 +623,7 @@ const submit_pto_request: Tool = {
       await context.env.APP_DB.prepare(
         "UPDATE pto_balances SET total_used = total_used + ?, current_balance = current_balance - ? WHERE employee_id = ?"
       )
-        .bind(total_days, total_days, employee_id)
+        .bind(total_days, total_days, employeeId)
         .run();
     }
 
@@ -897,13 +903,13 @@ const get_expense_history: Tool = {
  */
 const validate_expense_policy: Tool = {
   name: "validate_expense_policy",
-  description: "Validates an expense request against all company policies from the handbook: auto-approval limits, receipt requirements, non-reimbursable items, and daily limits. Use this BEFORE submitting an expense.",
+  description: "Validates an expense request against all company policies from the handbook: auto-approval limits, receipt requirements, non-reimbursable items, and daily limits. Use this BEFORE submitting an expense. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
       employee_id: {
         type: "string",
-        description: "Employee ID"
+        description: "Employee ID (optional, defaults to current user)"
       },
       amount: {
         type: "number",
@@ -926,11 +932,11 @@ const validate_expense_policy: Tool = {
         description: "Optional: Extracted data from receipt (merchant, date, etc.)"
       }
     },
-    required: ["employee_id", "amount", "category", "has_receipt"]
+    required: ["amount", "category", "has_receipt"]
   },
   execute: async (params, context: ToolContext) => {
-    const { employee_id, amount, category, description, has_receipt, receipt_data } = params as {
-      employee_id: string;
+    const { amount, category, description, has_receipt } = params as {
+      employee_id?: string;
       amount: number;
       category: string;
       description?: string;
@@ -938,8 +944,11 @@ const validate_expense_policy: Tool = {
       receipt_data?: { merchant: string; date: string; extracted_amount: number };
     };
 
+    // Use employee_id from params or default to authenticated user
+    const employeeId = (params.employee_id as string | undefined) || context.userId;
+
     console.log("[TOOL] validate_expense_policy called with:", {
-      employee_id,
+      employee_id: employeeId,
       amount,
       category,
       has_receipt
@@ -951,7 +960,7 @@ const validate_expense_policy: Tool = {
     const employee = await context.env.APP_DB.prepare(
       "SELECT employee_level FROM users WHERE id = ?"
     )
-      .bind(employee_id)
+      .bind(employeeId)
       .first<{ employee_level: string }>();
 
     if (!employee) {
@@ -1020,7 +1029,7 @@ const validate_expense_policy: Tool = {
     // Step 7: Check daily limits for meals
     if (category === 'meals') {
       const todayExpenses = await get_expense_history.execute({
-        employee_id,
+        employee_id: employeeId,
         timeframe: 'today',
         category: 'meals'
       }, context) as { total_amount: number; count: number };
@@ -1083,11 +1092,14 @@ const validate_expense_policy: Tool = {
  */
 const submit_expense_request: Tool = {
   name: "submit_expense_request",
-  description: "Creates an expense reimbursement request in the database with the validation status.",
+  description: "Creates an expense reimbursement request in the database with the validation status. The employee_id is optional and defaults to the current authenticated user.",
   parameters: {
     type: "object",
     properties: {
-      employee_id: { type: "string" },
+      employee_id: {
+        type: "string",
+        description: "Employee ID (optional, defaults to current user)"
+      },
       category: {
         type: "string",
         description: "Expense category: meals, travel, home_office, training, software, supplies"
@@ -1118,58 +1130,90 @@ const submit_expense_request: Tool = {
         description: "AI validation status"
       }
     },
-    required: ["employee_id", "category", "amount", "description", "status"]
+    required: ["category", "amount", "description", "status"]
   },
   execute: async (params, context: ToolContext) => {
-    const id = crypto.randomUUID();
+    // Use employee_id from params or default to authenticated user
+    const employeeId = (params.employee_id as string | undefined) || context.userId;
 
-    console.log(`[TOOL] submit_expense_request: Creating expense ${id}`);
-
-    // Get employee and manager info (same pattern as submit_pto_request)
+    // Get employee and manager info
     const employee = await context.env.APP_DB.prepare(
       "SELECT manager_id, employee_level FROM users WHERE id = ?"
-    ).bind(params.employee_id).first();
+    ).bind(employeeId).first();
 
     if (!employee) {
       throw new Error("Employee not found");
     }
 
-    // If receipt_id is provided, link it to this expense
-    if (params.receipt_id) {
-      await context.env.APP_DB.prepare(`
-        UPDATE receipt_uploads
-        SET expense_request_id = ?
-        WHERE id = ?
-      `).bind(id, params.receipt_id).run();
-    }
+    let expenseId: string;
 
-    // Insert expense request
-    await context.env.APP_DB.prepare(`
-      INSERT INTO expense_requests (
-        id, employee_id, manager_id, category, amount, currency,
-        description, status, auto_approved, escalation_reason,
-        employee_level, ai_validation_status, submission_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      params.employee_id,
-      (employee as { manager_id: string }).manager_id,
-      params.category,
-      params.amount,
-      params.currency || 'USD',
-      params.description,
-      params.status,
-      params.auto_approved ? 1 : 0,
-      params.escalation_reason || null,
-      params.employee_level || (employee as { employee_level: string }).employee_level,
-      params.ai_validation_status || 'validated',
-      'chat_ai'
-    ).run();
+    // If receipt_id is provided, get the placeholder expense_request_id from the receipt
+    if (params.receipt_id) {
+      const receipt = await context.env.APP_DB.prepare(
+        "SELECT expense_request_id FROM receipt_uploads WHERE id = ?"
+      ).bind(params.receipt_id).first<{ expense_request_id: string }>();
+
+      if (!receipt) {
+        throw new Error("Receipt not found");
+      }
+
+      expenseId = receipt.expense_request_id;
+      console.log(`[TOOL] submit_expense_request: Updating existing expense ${expenseId} for employee ${employeeId}`);
+
+      // Update the existing placeholder expense request
+      await context.env.APP_DB.prepare(`
+        UPDATE expense_requests
+        SET employee_id = ?, manager_id = ?, category = ?, amount = ?, currency = ?,
+            description = ?, status = ?, auto_approved = ?, escalation_reason = ?,
+            employee_level = ?, ai_validation_status = ?, submission_method = ?
+        WHERE id = ?
+      `).bind(
+        employeeId,
+        (employee as { manager_id: string }).manager_id,
+        params.category,
+        params.amount,
+        params.currency || 'USD',
+        params.description,
+        params.status,
+        params.auto_approved ? 1 : 0,
+        params.escalation_reason || null,
+        params.employee_level || (employee as { employee_level: string }).employee_level,
+        params.ai_validation_status || 'validated',
+        'chat_ai',
+        expenseId
+      ).run();
+    } else {
+      // No receipt - create a new expense request
+      expenseId = crypto.randomUUID();
+      console.log(`[TOOL] submit_expense_request: Creating new expense ${expenseId} for employee ${employeeId}`);
+
+      await context.env.APP_DB.prepare(`
+        INSERT INTO expense_requests (
+          id, employee_id, manager_id, category, amount, currency,
+          description, status, auto_approved, escalation_reason,
+          employee_level, ai_validation_status, submission_method
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        expenseId,
+        employeeId,
+        (employee as { manager_id: string }).manager_id,
+        params.category,
+        params.amount,
+        params.currency || 'USD',
+        params.description,
+        params.status,
+        params.auto_approved ? 1 : 0,
+        params.escalation_reason || null,
+        params.employee_level || (employee as { employee_level: string }).employee_level,
+        params.ai_validation_status || 'validated',
+        'chat_ai'
+      ).run();
+    }
 
     // Log audit event
     await log_audit_event.execute({
       entity_type: "expense_request",
-      entity_id: id,
+      entity_id: expenseId,
       action: "created",
       details: {
         category: params.category,
@@ -1179,10 +1223,10 @@ const submit_expense_request: Tool = {
       }
     }, context);
 
-    console.log(`[TOOL] Expense created: ${id}, status: ${params.status}`);
+    console.log(`[TOOL] Expense created: ${expenseId}, status: ${params.status}`);
 
     return {
-      request_id: id,
+      request_id: expenseId,
       status: params.status,
       message: params.status === 'auto_approved'
         ? `Expense approved automatically!`

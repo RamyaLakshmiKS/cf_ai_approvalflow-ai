@@ -149,6 +149,11 @@ TOOL_CALL: get_pto_balance
 PARAMETERS: {}
 ---
 
+CRITICAL: When copying UUIDs (like receipt_id or employee_id) from user messages:
+- UUIDs are EXACTLY 36 characters long (e.g., "49973e8b-f4d6-4bd0-b448-60ec2187e5eb")
+- Copy the ENTIRE UUID character-by-character without truncating or modifying
+- Check that you have all 36 characters before using the UUID
+
 When you have all the information you need, provide your final response without any tool calls.`,
         messages: currentMessages,
         temperature: 0.2
@@ -181,7 +186,22 @@ When you have all the information you need, provide your final response without 
         console.log(`[AGENT] Agent calling tool: ${toolName}`);
 
         try {
-          const params = JSON.parse(parametersMatch[1]);
+          // Clean up the JSON before parsing - fix common LLM JSON errors
+          let paramsStr = parametersMatch[1];
+          console.log(`[AGENT] Raw params JSON:`, paramsStr.substring(0, 200));
+
+          // Fix missing values after colons (e.g., "amount":, -> "amount": null,)
+          paramsStr = paramsStr.replace(/:\s*,/g, ': null,');
+          // Fix trailing commas before closing braces
+          paramsStr = paramsStr.replace(/,\s*}/g, '}');
+          // Fix missing values at end (e.g., "amount":})
+          paramsStr = paramsStr.replace(/:\s*}/g, ': null}');
+
+          if (paramsStr !== parametersMatch[1]) {
+            console.log(`[AGENT] Cleaned params JSON:`, paramsStr.substring(0, 200));
+          }
+
+          const params = JSON.parse(paramsStr);
           const toolResult = await tool.execute(params, context);
 
           console.log(`[AGENT] Tool ${toolName} result:`, toolResult);
@@ -212,9 +232,18 @@ When you have all the information you need, provide your final response without 
           });
         } catch (error) {
           console.error(`[AGENT] Tool ${toolName} error:`, error);
+
+          // Provide helpful error message to help AI recover
+          let errorMsg = error instanceof Error ? error.message : "Tool execution failed";
+
+          // If it's a JSON parse error, give specific guidance
+          if (errorMsg.includes("JSON")) {
+            errorMsg = `Invalid JSON format in PARAMETERS. Make sure all values are properly formatted. For numbers, use: "amount": 23.75 (not "amount":,). For strings, use quotes: "category": "meals"`;
+          }
+
           currentMessages.push({
             role: "user",
-            content: `TOOL_ERROR: ${error instanceof Error ? error.message : "Tool execution failed"}`
+            content: `TOOL_ERROR: ${errorMsg}. Please try again with correct parameters.`
           });
         }
       } else {
