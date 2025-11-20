@@ -1,18 +1,6 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
 
 import type { UIMessage } from "@ai-sdk/react";
-// Icon imports
-import {
-  Bug,
-  Moon,
-  PaperPlaneTilt,
-  Robot,
-  SignOut,
-  Stop,
-  Sun,
-  Trash,
-  User
-} from "@phosphor-icons/react";
 import { useAgentChat } from "agents/ai-react";
 import { useAgent } from "agents/react";
 import { isToolUIPart } from "ai";
