@@ -122,7 +122,7 @@ export async function runReActAgent(
 
   try {
     // Manual ReAct loop for tool calling (since Workers AI doesn't support AI SDK tools well)
-    const maxIterations = 5;
+    const maxIterations = 10;
     let currentMessages = [...messages];
     let finalResponse = "";
     const toolCallsExecuted: Array<{
@@ -141,6 +141,12 @@ export async function runReActAgent(
         system: getSystemPrompt() + `\n\nIMPORTANT: When you need to call a tool, respond with EXACTLY this format:
 TOOL_CALL: tool_name
 PARAMETERS: {json parameters}
+---
+
+CRITICAL: For tools with optional parameters (like get_pto_balance, get_pto_history), use an empty object {} if you want to use the default values (current user).
+Example - get_pto_balance for current user:
+TOOL_CALL: get_pto_balance
+PARAMETERS: {}
 ---
 
 When you have all the information you need, provide your final response without any tool calls.`,
