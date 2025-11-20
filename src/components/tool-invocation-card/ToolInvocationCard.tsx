@@ -47,7 +47,7 @@ export function ToolInvocationCard({
   onSubmit
   // addToolResult
 }: ToolInvocationCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <Card className="p-4 my-3 w-full max-w-[500px] rounded-md bg-neutral-100 dark:bg-neutral-900 overflow-hidden">
