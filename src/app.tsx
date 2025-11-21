@@ -80,7 +80,8 @@ function ChatInterface() {
   };
 
   const agent = useAgent({
-    agent: "chat"
+    agent: "chat",
+    name: user?.id || "default"
   });
 
   const [agentInput, setAgentInput] = useState("");
@@ -339,9 +340,11 @@ function ChatInterface() {
                   <ul className="text-sm text-left space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>
-                        "What can you do?"
-                      </span>
+                      <span>"What can you do?"</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-[#F48120]">•</span>
+                      <span>"How many PTO days do I have left?"</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
@@ -356,7 +359,8 @@ function ChatInterface() {
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
                       <span>
-                        "What does the employee handbook say about taking time offs?"
+                        "What does the employee handbook say about taking time
+                        offs?"
                       </span>
                     </li>
                   </ul>
