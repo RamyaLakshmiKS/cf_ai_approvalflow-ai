@@ -160,7 +160,7 @@ Receipt OCR uses Workers AI Vision with structured output extraction:
 npm install
 
 # Start dev server (Vite + Wrangler)
-npm start
+npm run start
 
 # Deploy to Cloudflare
 npm run deploy
