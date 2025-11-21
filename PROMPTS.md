@@ -171,7 +171,7 @@ While AI accelerated development, all major decisions were mine:
 ### Model Selection
 **Process**: I prompted AI to test multiple Workers AI models for function-calling reliability.
 
-**Result**: Tested 10+ models, documented in `FUNCTION-CALLING-TEST-RESULTS.md`[Remove the file, since I don't believe it adds value for project submission]. Only qwen model achieved 100% success rate. So I decided to write my own framework for calling tools, and used meta's much more powerful llm for running the show.
+**Result**: Tested 10+ models, documented in `FUNCTION-CALLING-TEST-RESULTS.md`[Removed the file, since I don't believe it adds value for this project submission]. Only qwen model achieved 100% success rate. So I decided to write my own framework for calling tools, and used meta's much more powerful llm for running the show.
 
 **My Decision**: Chose Llama 3.3 70B despite slower speed (~1.5s penalty) because reliability was critical.
 
@@ -233,9 +233,8 @@ The best results came from iterative prompting:
 
 ### 4. I Had to Debug Complex Issues
 AI couldn't debug complex issues like:
-- UUID truncation (LLM copying only 32 chars instead of 36)
 - WebSocket streaming state management
-- Race conditions in tool execution
+- It wasn't able to prompt the LLM to properly use the tools to execute workflows. So, I had to extensively rework the sytem prompts for the main chat agent.
 
 ### 5. Documentation Multiplier Effect
 Using AI to write documentation freed up time for architectural thinking and testing, resulting in better overall code quality.
