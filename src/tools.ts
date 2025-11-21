@@ -305,8 +305,52 @@ const calculate_business_days: Tool = {
       end_date
     });
 
+    // Validate date format (YYYY-MM-DD)
+    const dateFormatRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!start_date || !dateFormatRegex.test(start_date)) {
+      const error = `Invalid start_date format. Expected ISO 8601 format (YYYY-MM-DD), received: "${start_date}". Please provide the date in the correct format (e.g., "2025-12-20").`;
+      console.error(
+        "[TOOL] calculate_business_days - Invalid start_date:",
+        start_date
+      );
+      throw new Error(error);
+    }
+    if (!end_date || !dateFormatRegex.test(end_date)) {
+      const error = `Invalid end_date format. Expected ISO 8601 format (YYYY-MM-DD), received: "${end_date}". Please provide the date in the correct format (e.g., "2025-12-22").`;
+      console.error(
+        "[TOOL] calculate_business_days - Invalid end_date:",
+        end_date
+      );
+      throw new Error(error);
+    }
+
     const startDate = new Date(start_date);
     const endDate = new Date(end_date);
+
+    // Validate that dates are valid Date objects
+    if (Number.isNaN(startDate.getTime())) {
+      const error = `Invalid start_date: "${start_date}" is not a valid date. Please use format YYYY-MM-DD (e.g., "2025-12-20").`;
+      console.error(
+        "[TOOL] calculate_business_days - Invalid start_date:",
+        start_date
+      );
+      throw new Error(error);
+    }
+    if (Number.isNaN(endDate.getTime())) {
+      const error = `Invalid end_date: "${end_date}" is not a valid date. Please use format YYYY-MM-DD (e.g., "2025-12-22").`;
+      console.error(
+        "[TOOL] calculate_business_days - Invalid end_date:",
+        end_date
+      );
+      throw new Error(error);
+    }
+
+    // Validate that start_date is not after end_date
+    if (startDate > endDate) {
+      const error = `Invalid date range: start_date "${start_date}" is after end_date "${end_date}". Please ensure start_date comes before end_date.`;
+      console.error("[TOOL] calculate_business_days - Invalid date range");
+      throw new Error(error);
+    }
 
     // Get company holidays in range
     const holidays = await context.env.APP_DB.prepare(
