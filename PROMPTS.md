@@ -13,17 +13,20 @@ My development process followed a **structured, AI-assisted approach** with clea
 **Process**: I conducted an iterative planning session with Claude, acting as a product manager to scope out the application features. This resulted in:
 
 📋 **[Features Map](docs/features/features_map.md)** - Comprehensive planning document containing:
+
 - User personas (Junior Employee, Senior Employee, Manager)
 - User stories for PTO requests, expense reimbursements, and access grants
 - End-to-end user journeys with decision points
 - Mermaid diagrams showing approval flows
 
 **My Decisions**:
+
 - Chose to focus on PTO and expenses (not access grants) for MVP
 - Defined auto-approval thresholds: 3 days (junior), 10 days (senior), $100 (junior), $500 (senior)
 - Decided on escalation workflow (manager review for requests exceeding thresholds)
 
 **AI Contribution**:
+
 - Structured the user stories in standard format ("As a [persona], I want [feature] so that [benefit]")
 - Generated flow diagrams
 - Identified edge cases and post-MVP features
@@ -41,6 +44,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 **My Prompt**: "Create a detailed implementation plan for password-based authentication with session management using D1 and Durable Objects."
 
 **AI Output**: Step-by-step plan including:
+
 - Database schema (users, sessions tables)
 - PBKDF2 password hashing approach
 - Session cookie management with HTTP-only flags
@@ -55,6 +59,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 **My Prompt**: "Design the PTO request workflow with tools for balance checking, business day calculation, blackout period validation, and auto-approval logic."
 
 **AI Output**: Complete tool architecture with:
+
 - 7 tools required: `get_current_user`, `get_pto_balance`, `calculate_business_days`, `check_blackout_periods`, `validate_pto_policy`, `submit_pto_request`, `log_audit_event`
 - Database tables: `pto_requests`, `pto_balances`, `company_calendar`, `audit_log`
 - Tool execution sequence and decision logic
@@ -68,6 +73,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 **My Prompt**: "Design expense reimbursement with receipt OCR using Workers AI Vision, policy validation, and auto-approval workflow."
 
 **AI Output**: Comprehensive implementation plan including:
+
 - Receipt upload and base64 storage in D1
 - OCR extraction with LLaVA model and JSON parsing
 - Expense validation tools checking daily limits, receipt requirements, non-reimbursable items
@@ -82,6 +88,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 **My Prompt**: "Design a ReAct agent framework that can reason about user requests and call tools iteratively to fulfill PTO and expense workflows. Here's a [insert links] bunch of links about ReAct agentic flow from huggingface. Make your plan according after understanding from your web resarch."
 
 **AI Output**: Detailed architecture for:
+
 - ReAct loop with up to 15 iterations
 - Custom tool-calling format (`TOOL_CALL: tool_name` / `PARAMETERS: {...}`)
 - Streaming tool updates to UI
@@ -120,6 +127,7 @@ const get_pto_balance: Tool = {
 ```
 
 **My Role**:
+
 - Reviewed all AI-generated code for correctness
 - Tested each tool individually
 - Fixed bugs and edge cases (e.g., UUID truncation in expense submission)
@@ -130,26 +138,34 @@ const get_pto_balance: Tool = {
 ## Key AI Contributions
 
 ### 1. Architecture Design
+
 AI helped design the multi-model approach:
+
 - Llama 3.3 70B for main agent (chat + tool calling)
 - Llama 3.1 8B for handbook search (faster, cheaper for Q&A)
 - LLaVA 1.5 7B for receipt OCR (vision model)
 
 ### 2. Prompt Engineering
+
 AI assisted in crafting system prompts that prevent hallucinations:
+
 - "CRITICAL: NEVER pass employee_id parameter" (prevents cross-user data leaks)
 - "When you need to call a tool, respond with ONLY the tool call - NO other text"
 - Date injection for relative date calculations
 
 ### 3. Error Handling Patterns
+
 AI suggested auto-correction for common LLM JSON errors:
+
 ```typescript
 // Fix missing values after colons (e.g., "amount":, -> "amount": null,)
 paramsStr = paramsStr.replace(/:\s*,/g, ": null,");
 ```
 
 ### 4. Code Structure
+
 AI organized the codebase into clean separation of concerns:
+
 - `src/server.ts` - Routing and authentication
 - `src/react-agent.ts` - ReAct loop logic
 - `src/tools.ts` - Tool implementations
@@ -157,7 +173,9 @@ AI organized the codebase into clean separation of concerns:
 - `src/app.tsx` - Frontend React components
 
 ### 5. Documentation
+
 AI helped write:
+
 - Architecture diagrams (Mermaid syntax)
 - Test scenarios
 - This PROMPTS.md file
@@ -169,6 +187,7 @@ AI helped write:
 While AI accelerated development, all major decisions were mine:
 
 ### Model Selection
+
 **Process**: I prompted AI to test multiple Workers AI models for function-calling reliability.
 
 **Result**: Tested 10+ models, documented in `FUNCTION-CALLING-TEST-RESULTS.md`[Removed the file, since I don't believe it adds value for this project submission]. Only qwen model achieved 100% success rate. So I decided to write my own framework for calling tools, and used meta's much more powerful llm for running the show.
@@ -176,23 +195,28 @@ While AI accelerated development, all major decisions were mine:
 **My Decision**: Chose Llama 3.3 70B despite slower speed (~1.5s penalty) because reliability was critical.
 
 ### Security Implementation
+
 **AI Suggestion**: Basic session tokens.
 
 **My Enhancement**:
+
 - Added PBKDF2 password hashing with 100,000 iterations
 - Implemented HTTP-only secure cookies
 - Added session expiry validation
 - Logged invalid login attempts without exposing sensitive data
 
 ### Policy Enforcement Approach
+
 **AI Suggestion**: Vector embeddings with Vectorize.
 
 **My Decision**: Used simpler approach for MVP—pass full handbook to LLM in context (5KB fits easily). Vectorize is planned for future scale.
 
 ### Database Schema
+
 **AI Draft**: Suggested tables and columns.
 
 **My Refinement**:
+
 - Added audit logging for compliance
 - Included manager escalation workflow (post demo feature coming soon)
 - Designed for future extensions (employee levels, departments)
@@ -210,6 +234,7 @@ While AI accelerated development, all major decisions were mine:
 **AI-Assisted Planning Sessions**: 4 major planning documents
 
 **Iterations Required**:
+
 - Planning phase: 10-15 iterations per feature
 - Implementation: 5-10 iterations per tool
 - Debugging: 20+ iterations for edge cases
@@ -219,41 +244,49 @@ While AI accelerated development, all major decisions were mine:
 ## Lessons Learned
 
 ### 1. Plan First, Code Second
+
 Having detailed implementation plans from AI made coding with Copilot much faster and more accurate. Without the plan, Copilot would generate generic code that didn't align with the architecture.
 
 ### 2. Validate AI Suggestions
+
 AI suggested using Workers AI's native tool schema, but testing revealed poor reliability. Always validate AI architectural recommendations with experiments.
 
 ### 3. Iterative Refinement
+
 The best results came from iterative prompting:
+
 - Draft 1: "Create a PTO tool"
 - Draft 2: "Add balance checking and business day calculation"
 - Draft 3: "Include blackout period validation from company calendar"
 - Final: Integrated, tested, working implementation
 
 ### 4. I Had to Debug Complex Issues
+
 AI couldn't debug complex issues like:
+
 - WebSocket streaming state management
 - It wasn't able to prompt the LLM to properly use the tools to execute workflows. So, I had to extensively rework the sytem prompts for the main chat agent.
 
 ### 5. Documentation Multiplier Effect
+
 Using AI to write documentation freed up time for architectural thinking and testing, resulting in better overall code quality.
 
 ---
 
 ## Tools Used
 
-| Tool | Purpose | Usage |
-|------|---------|-------|
-| **Claude (Sonnet)** | Planning, architecture design, documentation | Heavy |
-| **GitHub Copilot** | Code implementation following plans | Heavy |
-| **Wrangler AI** | Testing Workers AI models for function calling | Light |
+| Tool                | Purpose                                        | Usage |
+| ------------------- | ---------------------------------------------- | ----- |
+| **Claude (Sonnet)** | Planning, architecture design, documentation   | Heavy |
+| **GitHub Copilot**  | Code implementation following plans            | Heavy |
+| **Wrangler AI**     | Testing Workers AI models for function calling | Light |
 
 ---
 
 ## Conclusion
 
 AI coding agents didn't replace me as the developer—they **amplified my productivity** by:
+
 - Handling repetitive tasks (boilerplate code, documentation)
 - Suggesting architectural patterns and best practices
 - Accelerating the plan-to-implementation cycle
