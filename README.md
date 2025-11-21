@@ -1,264 +1,99 @@
-# 🤖 Chat Agent Starter Kit
+# 🤖 ApprovalFlow AI
+## Your company's Instant HR -  Get your PTOs approved & expenses reimbursed in seconds 🚀 all in natural language
 
-![npm i agents command](./npm-agents-banner.svg)
-
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
-
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents).
 
 ## Features
 
 - 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
+- 🛠️ Built-in tool system with human-in-the-loop interactions.
 - 🌓 Dark/Light theme support
 - ⚡️ Real-time streaming responses
 - 🔄 State management and chat history
-- 🎨 Modern, responsive UI
+# ApprovalFlow AI
 
-## Prerequisites
+A Cloudflare Agents-based demo that showcases a ReAct-style AI assistant for employee workflows (PTO requests, expense reimbursements, receipt OCR, and handbook search). The project is built as a small, production-minded example using Cloudflare Workers, Workers AI, D1 (relational DB), Vectorize, and the Agents SDK.
 
-- Cloudflare account
-- Cloudflare AI Gateway / Workers AI subscription (or equivalent AI provider)
+This README is intentionally concise and focused for hiring reviewers:
+- Recruiters: quick summary of goal and highlights
+- Engineers: architecture, bindings, run/deploy steps, where core logic lives
+- Hiring managers: what the candidate implemented and how to evaluate it
 
-## Quick Start
+Project highlights
+- ReAct agent loop implemented in `src/react-agent.ts` using Workers AI and a pattern-based tool call protocol.
+- Tool registry in `src/tools.ts` implements domain primitives (get_current_user, get_pto_balance, validate_pto_policy, submit_pto_request, validate_expense_policy, submit_expense_request, show_expense_dialog, receipt OCR helpers, handbook search, audit logging).
+- Agent runtime using Cloudflare Agents (`src/server.ts`) for streaming chat and tool-part updates to the frontend.
+- Frontend chat UI using `agents/react` hooks in `src/app.tsx` with interactive tool cards and an expense submission dialog.
+- Handbook ingestion + embeddings using `src/ingest_handbook.ts` and Vectorize (optional RAG workflows).
 
-1. Create a new project:
+Quick repo map (important files)
+- `src/react-agent.ts` — ReAct loop, tool-call parsing, streaming tool updates.
+- `src/tools.ts` — Tool implementations and DB interactions (D1). Core business logic lives here.
+- `src/prompts.ts` — System prompt that instructs the model how to call tools and required workflows.
+- `src/server.ts` — Agent routing, authentication middleware, receipt upload + OCR pipeline.
+- `src/app.tsx` — Frontend chat UI that renders streaming tool parts and opens the expense dialog.
+- `docs/` — design and implementation notes (read these to understand assumptions).
 
-```bash
-npx create-cloudflare@latest --template cloudflare/agents-starter
-```
+What to look for when reviewing
+- Correct and secure tool usage: tools must not leak internal operations to users; check `src/prompts.ts` rules.
+- Data flow: authenticated session -> agent Durable storage -> tool calls (D1) -> final user response.
+- Error handling and auditing: `log_audit_event` records actions; heavy LLM failures are surfaced conservatively.
+- Separation of responsibilities: agent orchestrates reasoning, tools perform side effects and DB access.
 
-2. Install dependencies:
+Required Cloudflare bindings (configure in `wrangler.jsonc`)
+- `AI`: Workers AI gateway binding (used for LLM calls and vision/OCR)
+- `APP_DB`: D1 database binding (users, sessions, pto_balances, expense_requests, receipt_uploads, audit_log, company_calendar)
+- `VECTORIZE`: Vectorize index binding (optional — used by `ingestHandbook`)
+- Agents bindings/migrations: ensure migrations include the Agent class for Durable state if using Agents runtime
+
+Quick local development
+1. Install dependencies
 
 ```bash
 npm install
 ```
 
-3. Set up your environment:
-
-Create a `.dev.vars` file or configure your `wrangler.jsonc` `ai` binding for Workers AI. Example in `wrangler.jsonc`:
-
-```jsonc
-  "ai": {
-    "binding": "AI",
-    "remote": true
-  }
-```
-
-4. Run locally:
+2. Start local dev (workers + remote AI gateway recommended)
 
 ```bash
-npm start
+# Run worker in dev mode (use --remote if you rely on remote AI gateway bindings)
+npx wrangler dev --local
 ```
 
-5. Deploy:
+Notes:
+- Configure `wrangler.jsonc` with the `ai`, `d1`, and `vectorize` bindings used in this repo. The frontend checks `/check-ai-provider` and will show a banner if `env.AI` is not present.
+- For true end-to-end testing, attach an AI Gateway (Workers AI) or configure external LLM keys and update code to use them.
 
-```bash
-npm run deploy
-```
+Deployment
+- Use Wrangler to publish: `npx wrangler deploy` (ensure account, bindings, and migrations are configured).
+- Run the D1 migrations in `scripts/d1/apply_migrations.sh` to create tables used by the tools.
 
-## Demo Users (for testing/demo)
+Evaluating the assignment (for hiring)
+- Functionality: the agent should correctly call tools in the order described by `src/prompts.ts` (e.g., PTO flows must call get_current_user, get_pto_balance, calculate_business_days, validate_pto_policy, submit_pto_request).
+- Reproducibility: the repo should include `PROMPTS.md` (AI prompts used) and clear run instructions. The Cloudflare assignment requires the repo name to be prefixed with `cf_ai_` and to include `PROMPTS.md`.
+- Security & correctness: session handling, authorization checks on receipts and expense data, and audit logging.
+- UX: frontend opens expense dialog when `show_expense_dialog` is returned as a tool output; tool parts stream in live.
 
-This repository includes a seed migration that inserts three demo users for quick local testing and demo purposes. All three use the same plaintext password: `Password123!`.
+Short checklist for a reviewer
+- Are the required bindings present and documented in `wrangler.jsonc`?
+- Can you run the app locally with `wrangler dev` and a configured AI provider?
+- Does `src/prompts.ts` clearly outline the expected tool calling format and rules?
+- Do tools in `src/tools.ts` perform authorization checks and audit logging?
 
-1. ramya_manager - role: manager, employee_level: senior, department: People Ops, hire_date: 2018-06-01
-2. ramya_senior - role: employee, employee_level: senior, department: Engineering, hire_date: 2021-09-01 (manager: ramya_manager)
-3. ramya_junior - role: employee, employee_level: junior, department: Engineering, hire_date: 2024-03-01 (manager: ramya_manager)
+Next recommended repository additions (low-effort, high-value)
+- `PROMPTS.md` — include the exact system prompts and example tool-call outputs used during model interactions.
+- `DEPLOY.md` — concrete wrangler + migration steps for fast evaluation by a recruiter or hiring manager.
+- Integration tests for PTO and Expense flows (exercise `validate_*` and `submit_*` tools).
 
-The database migration file that seeds these users is: `migrations/0007_seed_ramya_users.sql`.
+Contact / Maintainers
+- See `package.json` and `docs/` for author and implementation notes.
 
-Note: This migration uses SQLite's `ON CONFLICT(username) DO UPDATE` UPSERT behavior to be idempotent and does not include explicit SQL transactions, to remain compatible with Cloudflare D1 migration execution.
+License
+- See `LICENSE` at repository root.
 
-Additionally, `migrations/0007_seed_ramya_users.sql` now includes `CREATE TABLE IF NOT EXISTS` statements for `users` and `sessions` so that the seed works even if prior auth schema migrations were applied out-of-order or a migration dropped tables. This helps avoid "no such table: users" errors during migration in D1 environments.
-
-Example: logging in with `ramya_manager` and the shared password:
-
-```bash
-curl -X POST http://localhost:8787/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "ramya_manager", "password":"Password123!"}'
-```
-
-The server will set an HTTP-only cookie called `session_token` on successful login.
-
-## Project Structure
-
-```
-├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
-```
-
-## Customization Guide
-
-### Adding New Tools
-
-Add new tools in `tools.ts` using the tool builder:
-
-```ts
+----
+If you want, I can now:
+- Add `PROMPTS.md` with the system prompt and examples (recommended for the Cloudflare assignment), or
+- Create `DEPLOY.md` with exact `wrangler` and D1 migration commands to make this repo reviewer-ready.
+Choose one and I will implement it next.
 // Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional()
-  })
-  // No execute function = requires confirmation
-});
-
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString()
-});
-
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string()
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  }
-});
-```
-
-To handle tool confirmations, add execution functions to the `executions` object:
-
-```typescript
-export const executions = {
-  searchDatabase: async ({
-    query,
-    limit
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  }
-  // Add more execution handlers for other tools that require confirmation
-};
-```
-
-Tools can be configured in two ways:
-
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action. NOTE: The keys in `executions` should match `toolsRequiringConfirmation` in `app.tsx`.
-
-### Use a different AI model provider
-
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but this repository has been updated to use Cloudflare's Workers AI provider. You can use any AI model provider as well, including:
-
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
-
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) (preferred in this project), install the package:
-
-```sh
-npm install workers-ai-provider
-```
-
-Add an `ai` binding to `wrangler.jsonc`:
-
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
-  }
-// rest of file
-```
-
-Replace usages of `@ai-sdk/openai` with `workers-ai-provider`. Example (server.ts):
-
-```diff
-// server.ts
-// Change the imports
-- import { openai } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
-
-// Create a Workers AI instance
-const workersai = createWorkersAI({ binding: env.AI });
-
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
-```
-
-Commit your changes and then run the `agents-starter` as per the rest of this README.
-
-### Modifying the UI
-
-The chat interface is built with React and can be customized in `app.tsx`:
-
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
-
-### Example Use Cases
-
-1. **Customer Support Agent**
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
-
-2. **Development Assistant**
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
-
-3. **Data Analysis Assistant**
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
-
-4. **Personal Productivity Assistant**
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
-
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
-
-Each use case can be implemented by:
-
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
-
-## Learn More
-
-- [`agents`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
-- [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-
-## License
-
-MIT
