@@ -37,6 +37,15 @@ export function Login() {
     }
   };
 
+  const handleDemoLogin = (demoUsername: string) => {
+    console.log("[LOGIN] Demo login selected:", demoUsername);
+    setUsername(demoUsername);
+    setPassword("Password123!");
+    setError(null);
+    setRegistrationSuccess(false);
+    setIsRegistering(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-950 px-6">
       <Card className="w-full max-w-md p-8 space-y-6 rounded-2xl shadow-lg">
@@ -67,6 +76,37 @@ export function Login() {
         {registrationSuccess && (
           <div className="rounded-md bg-green-50 p-2 text-green-700 text-sm text-center">
             Registration successful! You can now log in.
+          </div>
+        )}
+
+        {!isRegistering && (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-300 dark:border-yellow-700 rounded-xl p-4 space-y-3">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
+                Quick Demo Access
+              </p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                Try the app instantly with pre-configured accounts
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleDemoLogin("ramya_junior")}
+                className="w-full py-2 text-sm bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700"
+              >
+                Login as Junior
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleDemoLogin("ramya_senior")}
+                className="w-full py-2 text-sm bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700"
+              >
+                Login as Senior
+              </Button>
+            </div>
           </div>
         )}
 
