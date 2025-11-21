@@ -94,7 +94,7 @@ export async function runReActAgent(
   try {
     // Manual ReAct loop for tool calling (since Workers AI doesn't support AI SDK tools well)
     const maxIterations = 15; // Increased to handle complex multi-tool requests
-    let currentMessages = [...messages];
+    const currentMessages = [...messages];
     let finalResponse = "";
     const toolCallsExecuted: Array<{
       toolName: string;

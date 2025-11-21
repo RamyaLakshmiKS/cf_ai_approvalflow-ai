@@ -50,12 +50,14 @@ export const Modal = ({
   }, [isOpen]);
 
   // Tab focus and initial focus - only run once when modal opens
+  // biome-ignore lint/correctness/useExhaustiveDependencies: modalRef.current is intentionally captured fresh each time isOpen changes
   useEffect(() => {
-    if (!isOpen || !modalRef.current) return;
+    const modalElement = modalRef.current;
+    if (!isOpen || !modalElement) return;
 
     // Only focus the first element once when modal opens
     if (!hasFocusedRef.current) {
-      const focusableElements = modalRef.current.querySelectorAll(
+      const focusableElements = modalElement.querySelectorAll(
         'a, button, input, textarea, select, details, [tabindex]:not([tabindex="-1"])'
       ) as NodeListOf<HTMLElement>;
 
@@ -69,7 +71,7 @@ export const Modal = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         // Get fresh list of focusable elements for tab trapping
-        const currentFocusableElements = modalRef.current?.querySelectorAll(
+        const currentFocusableElements = modalElement?.querySelectorAll(
           'a, button, input, textarea, select, details, [tabindex]:not([tabindex="-1"])'
         ) as NodeListOf<HTMLElement> | undefined;
 
@@ -103,8 +105,6 @@ export const Modal = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-    // Intentionally omit onClose from deps to prevent re-running when parent re-renders
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;

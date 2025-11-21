@@ -874,18 +874,21 @@ const get_expense_history: Tool = {
     const now = Math.floor(Date.now() / 1000);
 
     switch (timeframe) {
-      case "today":
+      case "today": {
         const startOfDay = now - (now % 86400);
         timeCondition = `AND created_at >= ${startOfDay}`;
         break;
-      case "this_week":
+      }
+      case "this_week": {
         const startOfWeek = now - 7 * 86400;
         timeCondition = `AND created_at >= ${startOfWeek}`;
         break;
-      case "this_month":
+      }
+      case "this_month": {
         const startOfMonth = now - 30 * 86400;
         timeCondition = `AND created_at >= ${startOfMonth}`;
         break;
+      }
     }
 
     const query = `
@@ -903,7 +906,7 @@ const get_expense_history: Tool = {
       .all();
 
     const total = results.results.reduce(
-      (sum, exp: any) => sum + exp.amount,
+      (sum, exp) => sum + (exp.amount as number),
       0
     );
 
