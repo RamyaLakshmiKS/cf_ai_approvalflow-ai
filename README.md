@@ -20,6 +20,17 @@ Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intel
 - ⚡️ Real-time streaming responses
 - 🔄 State management and chat history
 
+## Demo videos
+
+### Video demo of Taking time off workflow & employee handbook Q&A with our chatbot
+
+
+
+https://github.com/user-attachments/assets/4989a080-0c02-486e-81e3-744580078acd
+
+
+
+
 ## For Recruiters & Hiring Managers
 
 **Live Demo**: [https://approvalflow-ai.ra-kuppasundarar.workers.dev/](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)
