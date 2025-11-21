@@ -24,7 +24,7 @@ The agent demonstrates autonomy, multi-step problem solving, and dynamic adaptat
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    USER REQUEST                         │
-│           "I need 5 days PTO next week"                │
+│           "I need 5 days PTO next week"                 │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
