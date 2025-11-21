@@ -1,264 +1,218 @@
-# 🤖 Chat Agent Starter Kit
+# 🤖 ApprovalFlow AI
+## Your company's Instant HR -  Get your PTOs approved & expenses reimbursed in seconds 🚀 all in natural language
 
-![npm i agents command](./npm-agents-banner.svg)
+Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents).
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
+## What is ApprovalFlow AI?
 
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+**ApprovalFlow AI** is your company's instant HR assistant that lives in a chat window. Instead of filling out boring forms and waiting days for approval, just tell the AI "I need time off next week" or "I want to submit this lunch receipt," and it handles everything automatically—checking your balance, validating company policies, and approving requests in seconds.
+
+Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intelligent agents that understand natural language, process receipts with computer vision, and follow your company's rulebook to the letter. Whether you're a junior employee requesting 3 days off or a senior manager expensing a $400 client dinner, the AI knows the rules, checks your eligibility, and either approves you instantly or escalates to your manager when needed. No more email chains, no more waiting—just chat and go.
 
 ## Features
 
 - 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
+- 🌴 Agentic workflow to automatically approve, deny or escalate PTO requests in accordance with company policies.
+- 🧾 Agentic workflow to reimburse expenses in accordance with company policies.
+- 🛠️ Built-in tool system with human-in-the-loop interactions.
 - 🌓 Dark/Light theme support
 - ⚡️ Real-time streaming responses
 - 🔄 State management and chat history
-- 🎨 Modern, responsive UI
 
-## Prerequisites
+## For Recruiters & Hiring Managers
 
-- Cloudflare account
-- Cloudflare AI Gateway / Workers AI subscription (or equivalent AI provider)
+**Live Demo**: [https://approvalflow-ai.ra-kuppasundarar.workers.dev/](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)
 
-## Quick Start
+### Quick Start (< 2 minutes)
+1. **Login** with any test account:
+   - `ramya_junior` / `Password123!` (junior engineer, 3-day auto-approval limit, $100 expense limit)
+   - `ramya_senior` / `Password123!` (senior engineer, 10-day auto-approval limit, $500 expense limit)
+   - `ramya_manager` / `Password123!` (manager, reviews escalated requests)
 
-1. Create a new project:
+2. **Try these commands** to see the AI in action:
 
-```bash
-npx create-cloudflare@latest --template cloudflare/agents-starter
-```
+   **PTO Requests**:
+   ```
+   "I need PTO from December 23-27"
+   "What's my PTO balance?"
+   "Can I take 15 days off in March?"
+   ```
 
-2. Install dependencies:
+   **Expense Reimbursement**:
+   ```
+   "I want to submit an expense"
+   "I need to get reimbursed for a client dinner"
+   ```
+   Then upload a receipt image—the AI extracts merchant, amount, date, and line items using computer vision, validates against company policies, and approves instantly or escalates to your manager.
 
-```bash
-npm install
-```
+3. **Watch the AI work**: You'll see real-time tool invocations as it checks your balance, validates policies, calculates business days, processes receipt OCR, and makes approval decisions—all in seconds.
 
-3. Set up your environment:
+### What Makes This Noteworthy
 
-Create a `.dev.vars` file or configure your `wrangler.jsonc` `ai` binding for Workers AI. Example in `wrangler.jsonc`:
+**Meets All Assignment Requirements**:
+- ✅ **Llama 3.3 70B on Workers AI** - Main chat model (deliberately chosen after testing 10+ models for function-calling reliability)
+- ✅ **Durable Objects** - Stateful chat sessions with SQLite persistence
+- ✅ **Workers AI Vision** - OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
+- ✅ **D1 Database** - Relational data for users, PTO balances, expenses, audit logs
+- ✅ **Real-time Streaming** - Tool invocations stream to UI as they execute
+- ✅ **Production-ready Auth** - PBKDF2 password hashing, session management
 
-```jsonc
-  "ai": {
-    "binding": "AI",
-    "remote": true
-  }
-```
+**Technical Highlights**:
+- **ReAct Agent Framework** - Custom implementation with iterative tool-calling loop (src/react-agent.ts)
+- **14 Intelligent Tools** - From `get_pto_balance` to `validate_expense_policy`, all with automatic context handling
+- **Policy Enforcement** - AI reads employee handbook and enforces complex rules (blackout periods, daily limits, receipt requirements)
+- **Computer Vision** - Extracts merchant, amount, date, and line items from receipt images
+- **Human-in-the-Loop** - Manager escalation for requests exceeding auto-approval thresholds
 
-4. Run locally:
+**Why It Works**:
+This isn't a chatbot wrapper around an LLM. It's a multi-agent system that orchestrates 14+ database queries, policy validations, and business logic—all while maintaining conversational context. The AI doesn't hallucinate approvals; it executes deterministic workflows based on real company data.
 
-```bash
-npm start
-```
+## For Engineers
 
-5. Deploy:
+### Architecture Overview
 
-```bash
-npm run deploy
-```
+ApprovalFlow AI is built on a **ReAct (Reasoning + Acting) agent framework** that coordinates multiple AI models, tools, and data sources. See the full [Architecture Documentation](docs/ARCHITECTURE.md) for detailed diagrams and flows.
 
-## Demo Users (for testing/demo)
+**Core Stack**:
+- **Agent Runtime**: [`agents`](https://www.npmjs.com/package/agents) SDK with Durable Objects for state persistence
+- **LLM Orchestration**: Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) using Vercel AI SDK
+- **Models**: Llama 3.3 70B (chat), Llama 3.1 8B (handbook search), LLaVA 1.5 7B (OCR)
+- **State**: Durable Object SQLite (chat history) + D1 (relational data)
+- **Frontend**: React + Vite with `useAgent` and `useAgentChat` hooks
 
-This repository includes a seed migration that inserts three demo users for quick local testing and demo purposes. All three use the same plaintext password: `Password123!`.
+### How the ReAct Agent Works
 
-1. ramya_manager - role: manager, employee_level: senior, department: People Ops, hire_date: 2018-06-01
-2. ramya_senior - role: employee, employee_level: senior, department: Engineering, hire_date: 2021-09-01 (manager: ramya_manager)
-3. ramya_junior - role: employee, employee_level: junior, department: Engineering, hire_date: 2024-03-01 (manager: ramya_manager)
+The agent doesn't just chat—it **thinks, acts, and verifies** in a loop:
 
-The database migration file that seeds these users is: `migrations/0007_seed_ramya_users.sql`.
+1. **User Input** → LLM parses intent and decides which tools to call
+2. **Tool Execution** → Queries D1, validates policies, calculates business days
+3. **Observation** → LLM analyzes tool results and decides next action
+4. **Iteration** → Repeats up to 15 times until all required information is gathered
+5. **Response** → Synthesizes final answer with approval/denial/escalation
 
-Note: This migration uses SQLite's `ON CONFLICT(username) DO UPDATE` UPSERT behavior to be idempotent and does not include explicit SQL transactions, to remain compatible with Cloudflare D1 migration execution.
+**Key Implementation Details**:
+- **Manual Tool Calling**: Workers AI doesn't fully support AI SDK's native tool schema, so we implement a custom `TOOL_CALL: tool_name` / `PARAMETERS: {...}` pattern that the LLM follows reliably ([see prompts.ts](src/prompts.ts))
+- **Streaming Tool Updates**: Tool invocations stream to the UI in real-time via WebSocket callbacks ([server.ts:254-305](src/server.ts#L254-L305))
+- **Context Window Management**: Conversation history limited to last 4 messages to fit within model limits ([react-agent.ts:74-75](src/react-agent.ts#L74-L75))
 
-Additionally, `migrations/0007_seed_ramya_users.sql` now includes `CREATE TABLE IF NOT EXISTS` statements for `users` and `sessions` so that the seed works even if prior auth schema migrations were applied out-of-order or a migration dropped tables. This helps avoid "no such table: users" errors during migration in D1 environments.
+### Tool System Design
 
-Example: logging in with `ramya_manager` and the shared password:
-
-```bash
-curl -X POST http://localhost:8787/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "ramya_manager", "password":"Password123!"}'
-```
-
-The server will set an HTTP-only cookie called `session_token` on successful login.
-
-## Project Structure
-
-```
-├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
-```
-
-## Customization Guide
-
-### Adding New Tools
-
-Add new tools in `tools.ts` using the tool builder:
-
-```ts
-// Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional()
-  })
-  // No execute function = requires confirmation
-});
-
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString()
-});
-
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string()
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  }
-});
-```
-
-To handle tool confirmations, add execution functions to the `executions` object:
+All 14 tools follow a consistent interface defined in [`src/tools.ts`](src/tools.ts):
 
 ```typescript
-export const executions = {
-  searchDatabase: async ({
-    query,
-    limit
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  }
-  // Add more execution handlers for other tools that require confirmation
-};
+interface Tool {
+  name: string;
+  description: string;
+  parameters: JSONSchema;
+  execute: (params: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+}
 ```
 
-Tools can be configured in two ways:
+**Tool Context Injection**: Every tool receives `{ env: Env, userId: string }` automatically—no need to pass employee IDs explicitly. The authenticated user ID flows from:
+1. Login → Session cookie → D1 sessions table
+2. Middleware extracts session → Validates user → Injects `X-User-Id` header
+3. Durable Object persists userId in storage → Tools access via context
 
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action. NOTE: The keys in `executions` should match `toolsRequiringConfirmation` in `app.tsx`.
-
-### Use a different AI model provider
-
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but this repository has been updated to use Cloudflare's Workers AI provider. You can use any AI model provider as well, including:
-
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
-
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) (preferred in this project), install the package:
-
-```sh
-npm install workers-ai-provider
+**Example Tool Chain** (PTO Request):
+```
+get_current_user()
+  → get_pto_balance()
+  → calculate_business_days(start, end)
+  → validate_pto_policy(dates)
+  → submit_pto_request(status)
 ```
 
-Add an `ai` binding to `wrangler.jsonc`:
+See [Features Map](docs/features/features_map.md) for user journeys and [Test Scenarios](docs/TEST_SCENARIOS.md) for behavior validation.
 
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
-  }
-// rest of file
+### Policy Enforcement
+
+The AI doesn't memorize rules—it **reads the employee handbook dynamically**:
+
+```typescript
+// Tool: search_employee_handbook
+const prompt = getHandbookSearchPrompt(handbookContent, query);
+const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+  messages: [{ role: "user", content: prompt }]
+});
 ```
 
-Replace usages of `@ai-sdk/openai` with `workers-ai-provider`. Example (server.ts):
+This means updating company policies is as simple as editing [`docs/handbook/employee_handbook.md`](docs/handbook/employee_handbook.md). No retraining required.
 
-```diff
-// server.ts
-// Change the imports
-- import { openai } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
+**Policy Validation Flow**:
+- PTO: Checks balance → blackout periods → auto-approval limits (3 days junior, 10 days senior)
+- Expenses: Validates receipt requirement (>$75) → daily limits ($75 meals) → non-reimbursable items → auto-approval thresholds ($100 junior, $500 senior)
 
-// Create a Workers AI instance
-const workersai = createWorkersAI({ binding: env.AI });
+### Computer Vision Pipeline
 
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
+Receipt OCR uses Workers AI Vision with structured output extraction:
+
+1. User uploads image → Stored as base64 in D1 `receipt_uploads` table
+2. AI processes with prompt: *"Extract amount, merchant, date, items as JSON"*
+3. Validates JSON structure → Stores in `extracted_data` column
+4. Agent uses extracted data for `validate_expense_policy` tool
+
+**Model**: `@cf/llava-hf/llava-1.5-7b-hf` ([receipt processing code](src/server.ts#L958-L999))
+
+### Running Locally
+
+```bash
+# Install dependencies
+npm install
+
+# Start dev server (Vite + Wrangler)
+npm run start
+
+# Deploy to Cloudflare
+npm run deploy
+
+# Run migrations
+npm run d1:apply
 ```
 
-Commit your changes and then run the `agents-starter` as per the rest of this README.
+**Environment Setup**:
+- D1 database auto-created via `wrangler.jsonc`
+- Demo users seeded via `migrations/0007_seed_ramya_users.sql`
+- No external API keys required (Workers AI runs on Cloudflare's platform)
 
-### Modifying the UI
+### Code Navigation
 
-The chat interface is built with React and can be customized in `app.tsx`:
+- **Agent Entry Point**: [src/server.ts](src/server.ts) - `Chat` class extends `AIChatAgent`
+- **ReAct Loop**: [src/react-agent.ts](src/react-agent.ts) - `runReActAgent()` function
+- **System Prompts**: [src/prompts.ts](src/prompts.ts) - Includes tool descriptions and behavior rules
+- **Tool Implementations**: [src/tools.ts](src/tools.ts) - All 14 tools with execute functions
+- **Frontend Agent Hooks**: [src/app.tsx](src/app.tsx) - `useAgent` and `useAgentChat` integration
+- **Database Schema**: [migrations/](migrations/) - D1 table definitions
+- **Implementation Plans**: [docs/features/implementation_plans/](docs/features/implementation_plans/) - Detailed design docs
 
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
+### Why This Architecture?
 
-### Example Use Cases
+**Durable Objects for Chat State**: Each user gets their own isolated Durable Object instance that persists conversation history in embedded SQLite. This means:
+- No cold start penalty for reconstructing context
+- Strong consistency for multi-turn conversations
+- Automatic WebSocket connection management
 
-1. **Customer Support Agent**
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
+**D1 for Application Data**: Relational queries are better suited for D1:
+- Complex JOINs (e.g., `receipt_uploads` ↔ `expense_requests` ↔ `users`)
+- ACID transactions for balance updates
+- Audit log compliance
 
-2. **Development Assistant**
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
+**Workers AI for Inference**: All models run on Cloudflare's edge network:
+- Zero external API dependencies
+- Sub-second latency for tool-calling loops
+- Cost-effective at scale (no per-token charges to external providers)
 
-3. **Data Analysis Assistant**
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
+### Contributing & Extending
 
-4. **Personal Productivity Assistant**
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
+**Adding a New Tool**:
+1. Define in `src/tools.ts` with `name`, `description`, `parameters`, `execute`
+2. Add to `tools` export object
+3. Update system prompt in `src/prompts.ts` to explain when to use it
+4. Test with [test scenarios](docs/TEST_SCENARIOS.md)
 
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
+**Modifying Policies**:
+- Edit `docs/handbook/employee_handbook.md`
+- Agent automatically queries updated policies via `search_employee_handbook` tool
 
-Each use case can be implemented by:
-
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
-
-## Learn More
-
-- [`agents`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
-- [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-
-## License
-
-MIT
+**Changing Models**:
+- Model selection impacts function-calling reliability
+- Current choice (Llama 3.3 70B) has 100% success rate in testing

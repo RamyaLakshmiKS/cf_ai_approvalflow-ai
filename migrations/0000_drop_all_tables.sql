@@ -8,3 +8,4 @@ DROP TABLE IF EXISTS pto_balances;
 DROP TABLE IF EXISTS pto_requests;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS receipt_uploads;
