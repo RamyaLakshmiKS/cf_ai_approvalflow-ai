@@ -176,6 +176,16 @@ When you have all the information you need and NO MORE TOOLS are needed, provide
           let paramsStr = parametersMatch[1];
           console.log(`[AGENT] Raw params JSON:`, paramsStr.substring(0, 200));
 
+          // Fix malformed property names where closing quote is missing before colon
+          // Pattern: "propertyName:value" -> "propertyName":"value"
+          // Example: "validation_notes:Valid text" -> "validation_notes":"Valid text"
+          paramsStr = paramsStr.replace(
+            /"([a-zA-Z_][a-zA-Z0-9_]*):([^"]+)"/g,
+            (_match, prop, value) => {
+              return '"' + prop + '":"' + value + '"';
+            }
+          );
+
           // Fix missing values after colons (e.g., "amount":, -> "amount": null,)
           paramsStr = paramsStr.replace(/:\s*,/g, ": null,");
           // Fix trailing commas before closing braces
