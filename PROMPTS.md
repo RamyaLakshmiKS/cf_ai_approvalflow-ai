@@ -1,10 +1,10 @@
 # AI Coding Agents in Development
 
-This document explains how AI coding agents (Claude, GitHub Copilot) were used to develop ApprovalFlow AI, as required by the Cloudflare internship assignment.
+This document explains how I used AI coding agents (Claude, GitHub Copilot) to develop ApprovalFlow AI, as required by the Cloudflare internship assignment.
 
-## Development Workflow
+## My Development Workflow
 
-The development process followed a **structured, AI-assisted approach** with clear human oversight at each stage:
+My development process followed a **structured, AI-assisted approach** with clear oversight at each stage:
 
 ### Phase 1: Product Planning with AI (Project Manager Role)
 
@@ -18,7 +18,7 @@ The development process followed a **structured, AI-assisted approach** with cle
 - End-to-end user journeys with decision points
 - Mermaid diagrams showing approval flows
 
-**Human Decisions**:
+**My Decisions**:
 - Chose to focus on PTO and expenses (not access grants) for MVP
 - Defined auto-approval thresholds: 3 days (junior), 10 days (senior), $100 (junior), $500 (senior)
 - Decided on escalation workflow (manager review for requests exceeding thresholds)
@@ -38,7 +38,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 
 📋 **[Auth MVP Plan](docs/features/implementation_plans/auth_mvp_plan.md)**
 
-**Human Prompt**: "Create a detailed implementation plan for password-based authentication with session management using D1 and Durable Objects."
+**My Prompt**: "Create a detailed implementation plan for password-based authentication with session management using D1 and Durable Objects."
 
 **AI Output**: Step-by-step plan including:
 - Database schema (users, sessions tables)
@@ -98,7 +98,7 @@ After defining the product scope, I worked with AI to create detailed implementa
 **Example Interaction**:
 
 ```
-Human: "Implement the get_pto_balance tool according to the PTO request plan.
+Me: "Implement the get_pto_balance tool according to the PTO request plan.
 Query D1 for current_balance, total_accrued, total_used, rollover_from_previous_year
 from pto_balances table."
 
@@ -119,7 +119,7 @@ const get_pto_balance: Tool = {
 };
 ```
 
-**Human Role**:
+**My Role**:
 - Reviewed all AI-generated code for correctness
 - Tested each tool individually
 - Fixed bugs and edge cases (e.g., UUID truncation in expense submission)
@@ -164,21 +164,21 @@ AI helped write:
 
 ---
 
-## Human Oversight & Critical Decisions
+## My Oversight & Critical Decisions
 
-While AI accelerated development, all major decisions were human-driven:
+While AI accelerated development, all major decisions were mine:
 
 ### Model Selection
 **Process**: I prompted AI to test multiple Workers AI models for function-calling reliability.
 
-**Result**: Tested 10+ models, documented in `FUNCTION-CALLING-TEST-RESULTS.md`. Only Llama 3.3 70B achieved 100% success rate.
+**Result**: Tested 10+ models, documented in `FUNCTION-CALLING-TEST-RESULTS.md`[Remove the file, since I don't believe it adds value for project submission]. Only qwen model achieved 100% success rate. So I decided to write my own framework for calling tools, and used meta's much more powerful llm for running the show.
 
-**Human Decision**: Chose Llama 3.3 70B despite slower speed (~1.5s penalty) because reliability was critical.
+**My Decision**: Chose Llama 3.3 70B despite slower speed (~1.5s penalty) because reliability was critical.
 
 ### Security Implementation
 **AI Suggestion**: Basic session tokens.
 
-**Human Enhancement**:
+**My Enhancement**:
 - Added PBKDF2 password hashing with 100,000 iterations
 - Implemented HTTP-only secure cookies
 - Added session expiry validation
@@ -187,14 +187,14 @@ While AI accelerated development, all major decisions were human-driven:
 ### Policy Enforcement Approach
 **AI Suggestion**: Vector embeddings with Vectorize.
 
-**Human Decision**: Used simpler approach for MVP—pass full handbook to LLM in context (5KB fits easily). Vectorize is planned for future scale.
+**My Decision**: Used simpler approach for MVP—pass full handbook to LLM in context (5KB fits easily). Vectorize is planned for future scale.
 
 ### Database Schema
 **AI Draft**: Suggested tables and columns.
 
-**Human Refinement**:
+**My Refinement**:
 - Added audit logging for compliance
-- Included manager escalation workflow
+- Included manager escalation workflow (post demo feature coming soon)
 - Designed for future extensions (employee levels, departments)
 
 ---
@@ -231,7 +231,7 @@ The best results came from iterative prompting:
 - Draft 3: "Include blackout period validation from company calendar"
 - Final: Integrated, tested, working implementation
 
-### 4. Human Debugging is Essential
+### 4. I Had to Debug Complex Issues
 AI couldn't debug complex issues like:
 - UUID truncation (LLM copying only 32 chars instead of 36)
 - WebSocket streaming state management
@@ -248,20 +248,19 @@ Using AI to write documentation freed up time for architectural thinking and tes
 |------|---------|-------|
 | **Claude (Sonnet)** | Planning, architecture design, documentation | Heavy |
 | **GitHub Copilot** | Code implementation following plans | Heavy |
-| **Cursor AI** | In-editor code suggestions and refactoring | Medium |
 | **Wrangler AI** | Testing Workers AI models for function calling | Light |
 
 ---
 
 ## Conclusion
 
-AI coding agents didn't replace the developer—they **amplified productivity** by:
+AI coding agents didn't replace me as the developer—they **amplified my productivity** by:
 - Handling repetitive tasks (boilerplate code, documentation)
 - Suggesting architectural patterns and best practices
 - Accelerating the plan-to-implementation cycle
 
-The key to success was treating AI as a **collaborative tool** with clear human oversight, not a replacement for engineering judgment.
+The key to my success was treating AI as a **collaborative tool** with clear oversight, not a replacement for engineering judgment.
 
-All critical decisions (model selection, security design, business logic) were made by analyzing AI suggestions against project requirements and validating through testing.
+All critical decisions (model selection, security design, business logic) were made by me after analyzing AI suggestions against project requirements and validating through testing.
 
 This approach aligns with Cloudflare's philosophy: use AI to build better products faster, but maintain rigorous standards for production code.

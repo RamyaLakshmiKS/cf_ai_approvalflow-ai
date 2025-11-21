@@ -214,6 +214,5 @@ npm run d1:apply
 - Agent automatically queries updated policies via `search_employee_handbook` tool
 
 **Changing Models**:
-- ⚠️ **Read [FUNCTION-CALLING-TEST-RESULTS.md](FUNCTION-CALLING-TEST-RESULTS.md) first!**
 - Model selection impacts function-calling reliability
 - Current choice (Llama 3.3 70B) has 100% success rate in testing
