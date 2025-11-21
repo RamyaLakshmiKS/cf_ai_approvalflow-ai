@@ -270,7 +270,15 @@ export class Chat extends AIChatAgent<Env> {
           });
 
           // Build parts array with ALL tool calls so far
-          const parts: any[] = [];
+          const parts: Array<{
+            type: string;
+            toolCallId: string;
+            toolName: string;
+            input: unknown;
+            output?: unknown;
+            state: string;
+            errorText?: string;
+          }> = [];
 
           // Add all tracked tool calls as parts
           for (const toolCall of streamedToolCalls.values()) {
@@ -287,7 +295,7 @@ export class Chat extends AIChatAgent<Env> {
 
           // Update the SAME message with all parts
           const existingMessages = this.messages.filter(
-            (m: any) => m.id !== streamingMessageId
+            (m) => m.id !== streamingMessageId
           );
 
           await this.saveMessages([
@@ -295,12 +303,12 @@ export class Chat extends AIChatAgent<Env> {
             {
               id: streamingMessageId,
               role: "assistant",
-              parts: parts as any,
+              parts: parts,
               metadata: {
                 createdAt: new Date().toISOString(),
                 streaming: true
               }
-            } as any
+            } as UIMessage
           ]);
         }
       );
@@ -318,7 +326,17 @@ export class Chat extends AIChatAgent<Env> {
       );
 
       // Build final message parts including tool calls and response
-      const parts: any[] = [];
+      const parts: Array<
+        | {
+            type: string;
+            toolCallId: string;
+            toolName: string;
+            input: unknown;
+            output: unknown;
+            state: string;
+          }
+        | { type: "text"; text: string }
+      > = [];
 
       // Add tool call parts first
       if (result.toolCalls && result.toolCalls.length > 0) {
@@ -343,7 +361,7 @@ export class Chat extends AIChatAgent<Env> {
 
       // Replace the streaming message with final message
       const existingMessages = this.messages.filter(
-        (m: any) => m.id !== streamingMessageId
+        (m) => m.id !== streamingMessageId
       );
 
       await this.saveMessages([
@@ -351,12 +369,12 @@ export class Chat extends AIChatAgent<Env> {
         {
           id: streamingMessageId, // Reuse same ID to replace streaming message
           role: "assistant",
-          parts: parts as any,
+          parts: parts,
           metadata: {
             createdAt: new Date().toISOString(),
             streaming: false // Mark as complete
           }
-        } as any
+        } as UIMessage
       ]);
 
       console.log(
@@ -983,7 +1001,7 @@ Only return valid JSON. If you cannot extract a field, use null. Focus on the to
       console.log("[RECEIPT] AI Response:", aiResponse);
 
       // Parse the response
-      if (aiResponse && aiResponse.description) {
+      if (aiResponse?.description) {
         // Try to extract JSON from the response
         const jsonMatch = aiResponse.description.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
