@@ -3,97 +3,70 @@
 
 Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents).
 
+## What is ApprovalFlow AI?
+
+**ApprovalFlow AI** is your company's instant HR assistant that lives in a chat window. Instead of filling out boring forms and waiting days for approval, just tell the AI "I need time off next week" or "I want to submit this lunch receipt," and it handles everything automatically—checking your balance, validating company policies, and approving requests in seconds.
+
+Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intelligent agents that understand natural language, process receipts with computer vision, and follow your company's rulebook to the letter. Whether you're a junior employee requesting 3 days off or a senior manager expensing a $400 client dinner, the AI knows the rules, checks your eligibility, and either approves you instantly or escalates to your manager when needed. No more email chains, no more waiting—just chat and go.
+
 ## Features
 
 - 💬 Interactive chat interface with AI
+- 🌴 Agentic workflow to automatically approve, deny or escalate PTO requests in accordance with company policies.
+- 🧾 Agentic workflow to reimburse expenses in accordance with company policies.
 - 🛠️ Built-in tool system with human-in-the-loop interactions.
 - 🌓 Dark/Light theme support
 - ⚡️ Real-time streaming responses
 - 🔄 State management and chat history
-# ApprovalFlow AI
 
-A Cloudflare Agents-based demo that showcases a ReAct-style AI assistant for employee workflows (PTO requests, expense reimbursements, receipt OCR, and handbook search). The project is built as a small, production-minded example using Cloudflare Workers, Workers AI, D1 (relational DB), Vectorize, and the Agents SDK.
+## For Recruiters & Hiring Managers
 
-This README is intentionally concise and focused for hiring reviewers:
-- Recruiters: quick summary of goal and highlights
-- Engineers: architecture, bindings, run/deploy steps, where core logic lives
-- Hiring managers: what the candidate implemented and how to evaluate it
+**Live Demo**: [https://approvalflow-ai.ra-kuppasundarar.workers.dev/](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)
 
-Project highlights
-- ReAct agent loop implemented in `src/react-agent.ts` using Workers AI and a pattern-based tool call protocol.
-- Tool registry in `src/tools.ts` implements domain primitives (get_current_user, get_pto_balance, validate_pto_policy, submit_pto_request, validate_expense_policy, submit_expense_request, show_expense_dialog, receipt OCR helpers, handbook search, audit logging).
-- Agent runtime using Cloudflare Agents (`src/server.ts`) for streaming chat and tool-part updates to the frontend.
-- Frontend chat UI using `agents/react` hooks in `src/app.tsx` with interactive tool cards and an expense submission dialog.
-- Handbook ingestion + embeddings using `src/ingest_handbook.ts` and Vectorize (optional RAG workflows).
+### Quick Start (< 2 minutes)
+1. **Login** with any test account:
+   - `ramya_junior` / `Password123!` (junior engineer, 3-day auto-approval limit, $100 expense limit)
+   - `ramya_senior` / `Password123!` (senior engineer, 10-day auto-approval limit, $500 expense limit)
+   - `ramya_manager` / `Password123!` (manager, reviews escalated requests)
 
-Quick repo map (important files)
-- `src/react-agent.ts` — ReAct loop, tool-call parsing, streaming tool updates.
-- `src/tools.ts` — Tool implementations and DB interactions (D1). Core business logic lives here.
-- `src/prompts.ts` — System prompt that instructs the model how to call tools and required workflows.
-- `src/server.ts` — Agent routing, authentication middleware, receipt upload + OCR pipeline.
-- `src/app.tsx` — Frontend chat UI that renders streaming tool parts and opens the expense dialog.
-- `docs/` — design and implementation notes (read these to understand assumptions).
+2. **Try these commands** to see the AI in action:
 
-What to look for when reviewing
-- Correct and secure tool usage: tools must not leak internal operations to users; check `src/prompts.ts` rules.
-- Data flow: authenticated session -> agent Durable storage -> tool calls (D1) -> final user response.
-- Error handling and auditing: `log_audit_event` records actions; heavy LLM failures are surfaced conservatively.
-- Separation of responsibilities: agent orchestrates reasoning, tools perform side effects and DB access.
+   **PTO Requests**:
+   ```
+   "I need PTO from December 23-27"
+   "What's my PTO balance?"
+   "Can I take 15 days off in March?"
+   ```
 
-Required Cloudflare bindings (configure in `wrangler.jsonc`)
-- `AI`: Workers AI gateway binding (used for LLM calls and vision/OCR)
-- `APP_DB`: D1 database binding (users, sessions, pto_balances, expense_requests, receipt_uploads, audit_log, company_calendar)
-- `VECTORIZE`: Vectorize index binding (optional — used by `ingestHandbook`)
-- Agents bindings/migrations: ensure migrations include the Agent class for Durable state if using Agents runtime
+   **Expense Reimbursement**:
+   ```
+   "I want to submit an expense"
+   "I need to get reimbursed for a client dinner"
+   ```
+   Then upload a receipt image—the AI extracts merchant, amount, date, and line items using computer vision, validates against company policies, and approves instantly or escalates to your manager.
 
-Quick local development
-1. Install dependencies
+3. **Watch the AI work**: You'll see real-time tool invocations as it checks your balance, validates policies, calculates business days, processes receipt OCR, and makes approval decisions—all in seconds.
 
-```bash
-npm install
-```
+### What Makes This Noteworthy
 
-2. Start local dev (workers + remote AI gateway recommended)
+**Meets All Assignment Requirements**:
+- ✅ **Llama 3.3 70B on Workers AI** - Main chat model (deliberately chosen after testing 10+ models for function-calling reliability)
+- ✅ **Durable Objects** - Stateful chat sessions with SQLite persistence
+- ✅ **Workers AI Vision** - OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
+- ✅ **D1 Database** - Relational data for users, PTO balances, expenses, audit logs
+- ✅ **Real-time Streaming** - Tool invocations stream to UI as they execute
+- ✅ **Production-ready Auth** - PBKDF2 password hashing, session management
 
-```bash
-# Run worker in dev mode (use --remote if you rely on remote AI gateway bindings)
-npx wrangler dev --local
-```
+**Technical Highlights**:
+- **ReAct Agent Framework** - Custom implementation with iterative tool-calling loop (src/react-agent.ts)
+- **14 Intelligent Tools** - From `get_pto_balance` to `validate_expense_policy`, all with automatic context handling
+- **Policy Enforcement** - AI reads employee handbook and enforces complex rules (blackout periods, daily limits, receipt requirements)
+- **Computer Vision** - Extracts merchant, amount, date, and line items from receipt images
+- **Human-in-the-Loop** - Manager escalation for requests exceeding auto-approval thresholds
 
-Notes:
-- Configure `wrangler.jsonc` with the `ai`, `d1`, and `vectorize` bindings used in this repo. The frontend checks `/check-ai-provider` and will show a banner if `env.AI` is not present.
-- For true end-to-end testing, attach an AI Gateway (Workers AI) or configure external LLM keys and update code to use them.
+**Why It Works**:
+This isn't a chatbot wrapper around an LLM. It's a multi-agent system that orchestrates 14+ database queries, policy validations, and business logic—all while maintaining conversational context. The AI doesn't hallucinate approvals; it executes deterministic workflows based on real company data.
 
-Deployment
-- Use Wrangler to publish: `npx wrangler deploy` (ensure account, bindings, and migrations are configured).
-- Run the D1 migrations in `scripts/d1/apply_migrations.sh` to create tables used by the tools.
+### Architecture Deep Dive
+See [CLAUDE.md](CLAUDE.md) for complete implementation details, agent design patterns, and tool-calling strategies.
 
-Evaluating the assignment (for hiring)
-- Functionality: the agent should correctly call tools in the order described by `src/prompts.ts` (e.g., PTO flows must call get_current_user, get_pto_balance, calculate_business_days, validate_pto_policy, submit_pto_request).
-- Reproducibility: the repo should include `PROMPTS.md` (AI prompts used) and clear run instructions. The Cloudflare assignment requires the repo name to be prefixed with `cf_ai_` and to include `PROMPTS.md`.
-- Security & correctness: session handling, authorization checks on receipts and expense data, and audit logging.
-- UX: frontend opens expense dialog when `show_expense_dialog` is returned as a tool output; tool parts stream in live.
-
-Short checklist for a reviewer
-- Are the required bindings present and documented in `wrangler.jsonc`?
-- Can you run the app locally with `wrangler dev` and a configured AI provider?
-- Does `src/prompts.ts` clearly outline the expected tool calling format and rules?
-- Do tools in `src/tools.ts` perform authorization checks and audit logging?
-
-Next recommended repository additions (low-effort, high-value)
-- `PROMPTS.md` — include the exact system prompts and example tool-call outputs used during model interactions.
-- `DEPLOY.md` — concrete wrangler + migration steps for fast evaluation by a recruiter or hiring manager.
-- Integration tests for PTO and Expense flows (exercise `validate_*` and `submit_*` tools).
-
-Contact / Maintainers
-- See `package.json` and `docs/` for author and implementation notes.
-
-License
-- See `LICENSE` at repository root.
-
-----
-If you want, I can now:
-- Add `PROMPTS.md` with the system prompt and examples (recommended for the Cloudflare assignment), or
-- Create `DEPLOY.md` with exact `wrangler` and D1 migration commands to make this repo reviewer-ready.
-Choose one and I will implement it next.
-// Example of a tool that requires confirmation
