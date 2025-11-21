@@ -24,9 +24,12 @@ Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intel
 
 ### Video demo of Taking time off workflow & employee handbook Q&A with our chatbot
 
-
-
 https://github.com/user-attachments/assets/4989a080-0c02-486e-81e3-744580078acd
+
+### Video demo of our agent recovering from a failure in one of the tool calls and completing the workflow [Rejecting the timeoff request because of company policy]
+
+
+https://github.com/user-attachments/assets/c863a3d8-1d62-48a3-ab86-002d35b6e1f2
 
 
 
