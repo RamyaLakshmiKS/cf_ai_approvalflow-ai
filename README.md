@@ -30,9 +30,7 @@ https://github.com/user-attachments/assets/08cdad5b-6fdd-42cc-9906-7f8f197fada8
 ### Video demo of our agent recovering from a failure in one of the tool calls and completing the workflow [Rejecting the timeoff request because of company policy]
 
 
-https://github.com/user-attachments/assets/c863a3d8-1d62-48a3-ab86-002d35b6e1f2
-
-
+https://github.com/user-attachments/assets/d2e0aa7f-6b32-495e-aaef-f503ebc58521
 
 
 ## For Recruiters & Hiring Managers
