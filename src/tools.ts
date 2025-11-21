@@ -1,4 +1,4 @@
-import handbookContent from "../docs/employee_handbook.md?raw";
+import handbookContent from "../docs/handbook/employee_handbook.md?raw";
 import { getHandbookSearchPrompt } from "./prompts";
 
 /**

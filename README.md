@@ -8,7 +8,7 @@ Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs
 
 **ApprovalFlow AI** is your company's instant HR assistant that lives in a chat window. Instead of filling out boring forms and waiting days for approval, just tell the AI "I need time off next week" or "I want to submit this lunch receipt," and it handles everything automatically—checking your balance, validating company policies, and approving requests in seconds.
 
-Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intelligent agents that understand natural language, process receipts with computer vision, and follow your company's rulebook to the letter. Whether you're a junior employee requesting 3 days off or a senior manager expensing a $400 client dinner, the AI knows the rules, checks your eligibility, and either approves you instantly or escalates to your manager when needed. No more email chains, no more waiting—just chat and go.
+Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intelligent agents that understand natural language, process receipts with computer vision, and follow your company's rulebook to the letter. Whether you're a junior employee requesting 3 days off or a senior manager expensing a client dinner, the AI knows the rules, checks your eligibility, and either approves you instantly or escalates to your manager when needed. No more email chains, no more waiting—just chat and go.
 
 ## Features
 
