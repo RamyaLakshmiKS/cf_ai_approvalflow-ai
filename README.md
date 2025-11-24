@@ -1,5 +1,7 @@
 # 🤖 ApprovalFlow AI
 
+> **🚀 [Try the Live Demo](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)** | Login with `ramya_junior` / `Password123!` to test PTO requests & expense reimbursement
+
 ## Your company's Instant HR - Get your PTOs approved & expenses reimbursed in seconds 🚀 all in natural language
 
 Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents).
