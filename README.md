@@ -33,6 +33,10 @@ https://github.com/user-attachments/assets/08cdad5b-6fdd-42cc-9906-7f8f197fada8
 
 https://github.com/user-attachments/assets/d2e0aa7f-6b32-495e-aaef-f503ebc58521
 
+### Video demo of submitting reimbursement
+
+https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
+
 ## For Recruiters & Hiring Managers
 
 **Live Demo**: [https://approvalflow-ai.ra-kuppasundarar.workers.dev/](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)
