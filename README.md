@@ -1,6 +1,6 @@
 # 🤖 ApprovalFlow AI
 
-> **🚀 [Try the Live Demo](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)** | Login with `ramya_junior` / `Password123!` to test PTO requests & expense reimbursement
+> **🚀 [Try the Live Demo](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)** | Login with using the quick demo options to test PTO requests & expense reimbursement
 
 ## Your company's Instant HR - Get your PTOs approved & expenses reimbursed in seconds 🚀 all in natural language
 
@@ -14,13 +14,14 @@ Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intel
 
 ## Features
 
-- 💬 Interactive chat interface with AI
-- 🌴 Agentic workflow to automatically approve, deny or escalate PTO requests in accordance with company policies.
-- 🧾 Agentic workflow to reimburse expenses in accordance with company policies.
-- 🛠️ Built-in tool system with human-in-the-loop interactions.
-- 🌓 Dark/Light theme support
-- ⚡️ Real-time streaming responses
-- 🔄 State management and chat history
+- 💬 Interactive chat interface with AI agent
+- 🌴 Agentic workflow to automatically approve, deny or escalate PTO requests[feature coming soon] in accordance with company policies
+- 🧾 Agentic workflow to reimburse expenses with receipt OCR processing (Workers AI Vision)
+- 🛠️ 15 specialized tools with automatic context injection and human-in-the-loop confirmations
+- 🌓 Dark/Light theme support with localStorage persistence
+- ⚡️ Real-time streaming responses via WebSocket (Durable Objects)
+- 🔄 State management with Durable Object SQLite + D1 relational database
+- 🔐 Secure authentication with PBKDF2 password hashing and HTTP-only session cookies
 
 ## Demo videos
 
@@ -66,25 +67,25 @@ https://github.com/user-attachments/assets/d2e0aa7f-6b32-495e-aaef-f503ebc58521
 
 ### What Makes This Noteworthy
 
-**Meets All Assignment Requirements**:
+**Core Technologies**:
 
-- ✅ **Llama 3.3 70B on Workers AI** - Main chat model (deliberately chosen after testing 10+ models for function-calling reliability)
-- ✅ **Durable Objects** - Stateful chat sessions with SQLite persistence
+- ✅ **Llama 3.3 70B on Workers AI** - Main chat model (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` for function calling)
+- ✅ **Durable Objects** - Stateful chat sessions with SQLite persistence via Agents SDK
 - ✅ **Workers AI Vision** - OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
 - ✅ **D1 Database** - Relational data for users, PTO balances, expenses, audit logs
 - ✅ **Real-time Streaming** - Tool invocations stream to UI as they execute
-- ✅ **Production-ready Auth** - PBKDF2 password hashing, session management
+- ✅ **Production-ready Auth** - PBKDF2 password hashing, HTTP-only session cookies
 
 **Technical Highlights**:
 
-- **ReAct Agent Framework** - Custom implementation with iterative tool-calling loop (src/react-agent.ts)
-- **14 Intelligent Tools** - From `get_pto_balance` to `validate_expense_policy`, all with automatic context handling
+- **ReAct Agent Framework** - Custom implementation with iterative tool-calling loop ([src/react-agent.ts](src/react-agent.ts))
+- **15 Intelligent Tools** - From `get_pto_balance` to `validate_expense_policy`, all with automatic context handling
 - **Policy Enforcement** - AI reads employee handbook and enforces complex rules (blackout periods, daily limits, receipt requirements)
-- **Computer Vision** - Extracts merchant, amount, date, and line items from receipt images
+- **Computer Vision** - Extracts merchant, amount, date, and line items from receipt images using Workers AI Vision (`@cf/llava-hf/llava-1.5-7b-hf`)
 - **Human-in-the-Loop** - Manager escalation for requests exceeding auto-approval thresholds
 
 **Why It Works**:
-This isn't a chatbot wrapper around an LLM. It's a multi-agent system that orchestrates 14+ database queries, policy validations, and business logic—all while maintaining conversational context. The AI doesn't hallucinate approvals; it executes deterministic workflows based on real company data.
+This isn't a chatbot wrapper around an LLM. It's a multi-agent system that orchestrates 15+ tools, database queries, policy validations, and business logic—all while maintaining conversational context. The AI doesn't hallucinate approvals; it executes deterministic workflows based on real company data.
 
 ## For Engineers
 
@@ -94,11 +95,12 @@ ApprovalFlow AI is built on a **ReAct (Reasoning + Acting) agent framework** tha
 
 **Core Stack**:
 
-- **Agent Runtime**: [`agents`](https://www.npmjs.com/package/agents) SDK with Durable Objects for state persistence
+- **Agent Runtime**: [`agents`](https://www.npmjs.com/package/agents) SDK (v0.2.20) with Durable Objects for state persistence
 - **LLM Orchestration**: Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) using Vercel AI SDK
-- **Models**: Llama 3.3 70B (chat), Llama 3.1 8B (handbook search), LLaVA 1.5 7B (OCR)
+- **Models**: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, chat), Llama 3.1 8B (handbook search), LLaVA 1.5 7B (OCR)
 - **State**: Durable Object SQLite (chat history) + D1 (relational data)
-- **Frontend**: React + Vite with `useAgent` and `useAgentChat` hooks
+- **Frontend**: React 19 + Vite with `useAgent` hook from `agents/react`
+- **Router**: Hono v4.10.6 with CORS middleware
 
 ### How the ReAct Agent Works
 
@@ -112,13 +114,14 @@ The agent doesn't just chat—it **thinks, acts, and verifies** in a loop:
 
 **Key Implementation Details**:
 
-- **Manual Tool Calling**: Workers AI doesn't fully support AI SDK's native tool schema, so we implement a custom `TOOL_CALL: tool_name` / `PARAMETERS: {...}` pattern that the LLM follows reliably ([see prompts.ts](src/prompts.ts))
-- **Streaming Tool Updates**: Tool invocations stream to the UI in real-time via WebSocket callbacks ([server.ts:254-305](src/server.ts#L254-L305))
-- **Context Window Management**: Conversation history limited to last 4 messages to fit within model limits ([react-agent.ts:74-75](src/react-agent.ts#L74-L75))
+- **Manual Tool Calling**: Workers AI requires custom tool parsing, so we implement a `TOOL_CALL: tool_name` / `PARAMETERS: {...}` pattern with regex-based extraction ([see prompts.ts](src/prompts.ts))
+- **Streaming Tool Updates**: Tool invocations stream to the UI in real-time via WebSocket callbacks ([server.ts:254-314](src/server.ts#L254-L314))
+- **Context Window Management**: Conversation history limited to last 4 messages to fit within model limits ([react-agent.ts](src/react-agent.ts))
+- **Model Selection**: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) is currently used for function calling
 
 ### Tool System Design
 
-All 14 tools follow a consistent interface defined in [`src/tools.ts`](src/tools.ts):
+All 15 tools follow a consistent interface defined in [`src/tools.ts`](src/tools.ts):
 
 ```typescript
 interface Tool {
@@ -178,7 +181,7 @@ Receipt OCR uses Workers AI Vision with structured output extraction:
 3. Validates JSON structure → Stores in `extracted_data` column
 4. Agent uses extracted data for `validate_expense_policy` tool
 
-**Model**: `@cf/llava-hf/llava-1.5-7b-hf` ([receipt processing code](src/server.ts#L958-L999))
+**Model**: `@cf/llava-hf/llava-1.5-7b-hf` ([receipt processing code](src/server.ts#L976-L1044))
 
 ### Running Locally
 
@@ -198,19 +201,20 @@ npm run d1:apply
 
 **Environment Setup**:
 
-- D1 database auto-created via `wrangler.jsonc`
-- Demo users seeded via `migrations/0007_seed_ramya_users.sql`
+- D1 database configured in `wrangler.jsonc` (database_id: `a09cdc9d-ad17-4a8c-afea-417c4107a098`)
+- Demo users seeded via `migrations/0001_create_auth_tables.sql`
 - No external API keys required (Workers AI runs on Cloudflare's platform)
+- Durable Object migration configured with `new_sqlite_classes: ["Chat"]`
 
 ### Code Navigation
 
-- **Agent Entry Point**: [src/server.ts](src/server.ts) - `Chat` class extends `AIChatAgent`
-- **ReAct Loop**: [src/react-agent.ts](src/react-agent.ts) - `runReActAgent()` function
+- **Agent Entry Point**: [src/server.ts](src/server.ts) - `Chat` class extends `AIChatAgent` (lines 76-421)
+- **ReAct Loop**: [src/react-agent.ts](src/react-agent.ts) - `runReActAgent()` function (324 lines)
 - **System Prompts**: [src/prompts.ts](src/prompts.ts) - Includes tool descriptions and behavior rules
-- **Tool Implementations**: [src/tools.ts](src/tools.ts) - All 14 tools with execute functions
-- **Frontend Agent Hooks**: [src/app.tsx](src/app.tsx) - `useAgent` and `useAgentChat` integration
-- **Database Schema**: [migrations/](migrations/) - D1 table definitions
-- **Implementation Plans**: [docs/features/implementation_plans/](docs/features/implementation_plans/) - Detailed design docs
+- **Tool Implementations**: [src/tools.ts](src/tools.ts) - All 15 tools with execute functions (1,481 lines)
+- **Frontend Agent Hooks**: [src/app.tsx](src/app.tsx) - `useAgent` hook from `agents/react` (649 lines)
+- **Database Schema**: [migrations/](migrations/) - 8 D1 migration files
+- **Architecture Documentation**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Comprehensive architecture diagrams and flows
 
 ### Why This Architecture?
 
@@ -248,5 +252,5 @@ npm run d1:apply
 
 **Changing Models**:
 
-- Model selection impacts function-calling reliability
-- Current choice (Llama 3.3 70B) has 100% success rate in testing
+- ⚠️ **CRITICAL**: Do NOT change the model without comprehensive testing
+- Current model: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)

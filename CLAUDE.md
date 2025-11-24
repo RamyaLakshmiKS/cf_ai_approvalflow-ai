@@ -52,27 +52,14 @@ npm test                 # Run tests with Vitest
 **2. AI Agent Implementation (`src/react-agent.ts`)**
 
 - Uses Vercel AI SDK with Workers AI provider
-- **Model: `@cf/qwen/qwen3-30b-a3b-fp8`** ⚠️ DO NOT CHANGE - See below
+- **Model: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`** ⚠️ DO NOT CHANGE without testing
 - Implements streaming responses with tool calling support
 - Maintains conversation history (limited to last 4 messages/2 turns for context window)
 - Tools can be dynamically enabled/disabled via `includeTools` option
 
 **⚠️ CRITICAL: Model Selection**
 
-The model `@cf/qwen/qwen3-30b-a3b-fp8` was selected after comprehensive testing and is the ONLY Workers AI model with 100% reliable function calling support. DO NOT change this model without extensive testing.
-
-**Test Results Summary:**
-
-- Qwen3-30B: 100% success rate (10/10 tests) ✅
-- Llama 3.3 70B: 80% success rate - fails 40% on natural language queries ❌
-- All other models: 0-50% success rate ❌
-
-**Why this matters:**
-
-- Function calling reliability is critical for this application
-- Users expect tools like `get_pto_balance` and `submit_pto_request` to work every time
-- A 20% failure rate means 1 in 5 user requests fail silently
-- The ~1.5s speed difference is acceptable for reliability
+The model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` is currently being used for function calling. DO NOT change this model without extensive testing.
 
 **Before changing:**
 
@@ -85,7 +72,7 @@ The model `@cf/qwen/qwen3-30b-a3b-fp8` was selected after comprehensive testing 
 
 - Test script: `test-function-calling.ts`
 - Test results: `FUNCTION-CALLING-TEST-RESULTS.md`
-- Implementation: `src/react-agent.ts` (lines 39-84)
+- Implementation: `src/react-agent.ts` (lines 66-72)
 
 **3. Tool System**
 Two parallel tool implementations:
