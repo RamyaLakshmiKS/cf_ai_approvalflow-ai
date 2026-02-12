@@ -182,7 +182,7 @@ When you have all the information you need and NO MORE TOOLS are needed, provide
           paramsStr = paramsStr.replace(
             /"([a-zA-Z_][a-zA-Z0-9_]*):([^"]+)"/g,
             (_match, prop, value) => {
-              return '"' + prop + '":"' + value + '"';
+              return `"${prop}":"${value}"`;
             }
           );
 

@@ -1207,7 +1207,7 @@ app.post("/api/audio/transcribe", async (c) => {
     let transcriptionResult: unknown;
 
     try {
-      const whisperPayload: any = {
+      const whisperPayload = {
         audio: base64Data,
         task: "transcribe"
         // provide a hint for language if known (optional)
@@ -1221,7 +1221,7 @@ app.post("/api/audio/transcribe", async (c) => {
 
       transcriptionResult = await c.env.AI.run(
         "@cf/openai/whisper-large-v3-turbo",
-        whisperPayload as any
+        whisperPayload
       );
 
       console.log(
@@ -1244,7 +1244,7 @@ app.post("/api/audio/transcribe", async (c) => {
         };
         transcriptionResult = await c.env.AI.run(
           "@cf/deepgram/nova-3",
-          fallbackReq as any
+          fallbackReq
         );
       } catch (dgError) {
         console.error("[AUDIO] Deepgram fallback error:", dgError);
@@ -1274,14 +1274,23 @@ app.post("/api/audio/transcribe", async (c) => {
 
     // Extract text from known response shapes. Deepgram/Workers AI responses can vary,
     // so probe several common fields used by STT providers.
-    const t = transcriptionResult as any;
+    const t = transcriptionResult as Record<string, unknown>;
     const text =
-      t.text ||
-      t.transcript ||
-      t.result ||
-      t.results?.channels?.[0]?.alternatives?.[0]?.transcript ||
-      t.channels?.[0]?.alternatives?.[0]?.transcript ||
-      t.results?.[0]?.alternatives?.[0]?.transcript ||
+      (t.text as string | undefined) ||
+      (t.transcript as string | undefined) ||
+      (t.result as string | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.results as any)?.channels?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.channels as any)?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.results as any)?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
       "";
 
     if (!text || typeof text !== "string") {

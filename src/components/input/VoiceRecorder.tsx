@@ -77,7 +77,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 
           // Stop all tracks in the stream
           if (streamRef.current) {
-            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current.getTracks().forEach((track) => {
+              track.stop();
+            });
             streamRef.current = null;
           }
 
@@ -139,7 +141,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   useEffect(() => {
     return () => {
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
       }
     };
   }, []);
