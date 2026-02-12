@@ -28,7 +28,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       const mimeType = MediaRecorder.isTypeSupported("audio/webm")
         ? "audio/webm"
         : "audio/mp4";
-      
+
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -152,10 +152,10 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         variant={isRecording ? "secondary" : "ghost"}
         size="md"
         shape="square"
-        className={`rounded-full h-9 w-9 flex items-center justify-center ${isRecording ? 'bg-red-600 animate-pulse' : ''}`}
+        className={`rounded-full h-9 w-9 flex items-center justify-center ${isRecording ? "bg-red-600 animate-pulse" : ""}`}
         onClick={isRecording ? stopRecording : startRecording}
         disabled={disabled || isTranscribing}
-        aria-label={isRecording ? 'Stop recording' : 'Start voice recording'}
+        aria-label={isRecording ? "Stop recording" : "Start voice recording"}
       >
         {isRecording ? (
           <Stop size={16} className="text-white" />

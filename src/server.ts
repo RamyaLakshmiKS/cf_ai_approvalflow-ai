@@ -1209,43 +1209,67 @@ app.post("/api/audio/transcribe", async (c) => {
     try {
       const whisperPayload: any = {
         audio: base64Data,
-        task: 'transcribe',
+        task: "transcribe"
         // provide a hint for language if known (optional)
         // language: 'en'
       };
 
-      console.log('[AUDIO] Sending base64 audio to Whisper, length:', base64Data.length);
+      console.log(
+        "[AUDIO] Sending base64 audio to Whisper, length:",
+        base64Data.length
+      );
 
-      transcriptionResult = await c.env.AI.run('@cf/openai/whisper-large-v3-turbo', whisperPayload as any);
+      transcriptionResult = await c.env.AI.run(
+        "@cf/openai/whisper-large-v3-turbo",
+        whisperPayload as any
+      );
 
-      console.log('[AUDIO] Whisper transcription response preview:', JSON.stringify(transcriptionResult).slice(0, 1000));
+      console.log(
+        "[AUDIO] Whisper transcription response preview:",
+        JSON.stringify(transcriptionResult).slice(0, 1000)
+      );
     } catch (whisperError) {
-      console.error('[AUDIO] Whisper AI run error:', whisperError);
+      console.error("[AUDIO] Whisper AI run error:", whisperError);
       // As a fallback, try Deepgram nova-3 with a URL body if available
       try {
-        console.log('[AUDIO] Whisper failed, attempting Deepgram nova-3 with URL fallback');
+        console.log(
+          "[AUDIO] Whisper failed, attempting Deepgram nova-3 with URL fallback"
+        );
         // If you have a public URL, you can set it here. Otherwise this will likely fail.
         const fallbackReq = {
           audio: {
-            body: { url: '' },
+            body: { url: "" },
             contentType: file.type
           }
         };
-        transcriptionResult = await c.env.AI.run('@cf/deepgram/nova-3', fallbackReq as any);
+        transcriptionResult = await c.env.AI.run(
+          "@cf/deepgram/nova-3",
+          fallbackReq as any
+        );
       } catch (dgError) {
-        console.error('[AUDIO] Deepgram fallback error:', dgError);
+        console.error("[AUDIO] Deepgram fallback error:", dgError);
         return c.json(
-          { error: 'Transcription service error', details: dgError instanceof Error ? dgError.message : String(dgError) },
+          {
+            error: "Transcription service error",
+            details:
+              dgError instanceof Error ? dgError.message : String(dgError)
+          },
           500
         );
       }
     }
 
-    console.log('[AUDIO] Transcription result:', transcriptionResult);
+    console.log("[AUDIO] Transcription result:", transcriptionResult);
 
     if (!transcriptionResult || typeof transcriptionResult !== "object") {
-      console.error("[AUDIO] Invalid response format from Deepgram:", transcriptionResult);
-      return c.json({ error: "Invalid response from transcription service" }, 500);
+      console.error(
+        "[AUDIO] Invalid response format from Deepgram:",
+        transcriptionResult
+      );
+      return c.json(
+        { error: "Invalid response from transcription service" },
+        500
+      );
     }
 
     // Extract text from known response shapes. Deepgram/Workers AI responses can vary,
@@ -1261,8 +1285,14 @@ app.post("/api/audio/transcribe", async (c) => {
       "";
 
     if (!text || typeof text !== "string") {
-      console.error("[AUDIO] No text in transcription response:", transcriptionResult);
-      return c.json({ error: "Could not extract text from transcription" }, 500);
+      console.error(
+        "[AUDIO] No text in transcription response:",
+        transcriptionResult
+      );
+      return c.json(
+        { error: "Could not extract text from transcription" },
+        500
+      );
     }
 
     const cleanedText = text.trim();
