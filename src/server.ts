@@ -1130,6 +1130,202 @@ app.get("/api/receipts/:id", async (c) => {
   }
 });
 
+// Audio transcription endpoint using Deepgram on Workers AI
+app.post("/api/audio/transcribe", async (c) => {
+  try {
+    console.log("[AUDIO] Transcription request received");
+
+    // Get user from session
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) {
+      console.warn("[AUDIO] Unauthorized transcription attempt");
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    // Parse multipart form data
+    const formData = await c.req.formData();
+    const file = formData.get("audio") as File;
+
+    if (!file) {
+      console.warn("[AUDIO] No audio file provided");
+      return c.json({ error: "Audio file is required" }, 400);
+    }
+
+    // Validate file type
+    const allowedTypes = ["audio/webm", "audio/wav", "audio/mp3", "audio/mp4"];
+    if (!allowedTypes.includes(file.type)) {
+      console.warn("[AUDIO] Invalid file type:", file.type);
+      return c.json(
+        {
+          error: `Invalid file type. Allowed types: ${allowedTypes.join(", ")}`
+        },
+        400
+      );
+    }
+
+    // Validate file size (10MB limit for audio)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      console.warn("[AUDIO] File too large:", file.size);
+      return c.json(
+        {
+          error: `File size exceeds maximum of ${maxSize / 1024 / 1024}MB`
+        },
+        400
+      );
+    }
+
+    console.log("[AUDIO] Processing audio file:", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      user: user.username
+    });
+
+    // Read file as buffer and convert to base64
+    const buffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(buffer);
+
+    // Convert to base64 in chunks to avoid call stack size exceeded
+    let base64Data = "";
+    const chunkSize = 0x8000; // 32KB chunks
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      base64Data += String.fromCharCode(...chunk);
+    }
+    base64Data = btoa(base64Data);
+
+    console.log("[AUDIO] Converted to base64, length:", base64Data.length);
+
+    // Call Deepgram on Workers AI for transcription
+    // Using nova-3 model for best balance of speed and accuracy
+    console.log(
+      "[AUDIO] Calling Deepgram STT via Workers AI (@cf/deepgram/nova-3)"
+    );
+
+    // Use OpenAI Whisper for transcription (works with base64 audio payload)
+    let transcriptionResult: unknown;
+
+    try {
+      const whisperPayload = {
+        audio: base64Data,
+        task: "transcribe"
+        // provide a hint for language if known (optional)
+        // language: 'en'
+      };
+
+      console.log(
+        "[AUDIO] Sending base64 audio to Whisper, length:",
+        base64Data.length
+      );
+
+      transcriptionResult = await c.env.AI.run(
+        "@cf/openai/whisper-large-v3-turbo",
+        whisperPayload
+      );
+
+      console.log(
+        "[AUDIO] Whisper transcription response preview:",
+        JSON.stringify(transcriptionResult).slice(0, 1000)
+      );
+    } catch (whisperError) {
+      console.error("[AUDIO] Whisper AI run error:", whisperError);
+      // As a fallback, try Deepgram nova-3 with a URL body if available
+      try {
+        console.log(
+          "[AUDIO] Whisper failed, attempting Deepgram nova-3 with URL fallback"
+        );
+        // If you have a public URL, you can set it here. Otherwise this will likely fail.
+        const fallbackReq = {
+          audio: {
+            body: { url: "" },
+            contentType: file.type
+          }
+        };
+        transcriptionResult = await c.env.AI.run(
+          "@cf/deepgram/nova-3",
+          fallbackReq
+        );
+      } catch (dgError) {
+        console.error("[AUDIO] Deepgram fallback error:", dgError);
+        return c.json(
+          {
+            error: "Transcription service error",
+            details:
+              dgError instanceof Error ? dgError.message : String(dgError)
+          },
+          500
+        );
+      }
+    }
+
+    console.log("[AUDIO] Transcription result:", transcriptionResult);
+
+    if (!transcriptionResult || typeof transcriptionResult !== "object") {
+      console.error(
+        "[AUDIO] Invalid response format from Deepgram:",
+        transcriptionResult
+      );
+      return c.json(
+        { error: "Invalid response from transcription service" },
+        500
+      );
+    }
+
+    // Extract text from known response shapes. Deepgram/Workers AI responses can vary,
+    // so probe several common fields used by STT providers.
+    const t = transcriptionResult as Record<string, unknown>;
+    const text =
+      (t.text as string | undefined) ||
+      (t.transcript as string | undefined) ||
+      (t.result as string | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.results as any)?.channels?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.channels as any)?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
+      // biome-ignore lint/suspicious/noExplicitAny: Dynamic STT response shape
+      ((t.results as any)?.[0]?.alternatives?.[0]?.transcript as
+        | string
+        | undefined) ||
+      "";
+
+    if (!text || typeof text !== "string") {
+      console.error(
+        "[AUDIO] No text in transcription response:",
+        transcriptionResult
+      );
+      return c.json(
+        { error: "Could not extract text from transcription" },
+        500
+      );
+    }
+
+    const cleanedText = text.trim();
+    console.log("[AUDIO] Transcribed text:", cleanedText.substring(0, 100));
+
+    if (!cleanedText) {
+      return c.json(
+        { error: "No speech detected in audio. Please try again." },
+        400
+      );
+    }
+
+    return c.json({
+      success: true,
+      text: cleanedText
+    });
+  } catch (error) {
+    console.error("[AUDIO] Transcription error:", error);
+    const errorMsg =
+      error instanceof Error ? error.message : "Transcription failed";
+    return c.json({ error: errorMsg }, 500);
+  }
+});
+
 // Fallback route for agent requests
 app.all("*", async (c) => {
   const path = c.req.path;

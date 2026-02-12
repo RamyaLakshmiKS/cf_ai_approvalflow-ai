@@ -16,6 +16,7 @@ import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { Textarea } from "@/components/textarea/Textarea";
 import { Toggle } from "@/components/toggle/Toggle";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import { VoiceRecorder } from "@/components/input/VoiceRecorder";
 import { ExpenseSubmissionDialog } from "@/components/expense/ExpenseSubmissionDialog";
 import { useAuthContext } from "@/providers/AuthProvider";
 import type { tools } from "./tools";
@@ -46,6 +47,7 @@ function ChatInterface() {
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const processedToolCalls = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +94,19 @@ function ChatInterface() {
     console.log("[UI] Input changed, length:", e.target.value.length);
   };
 
+  const handleVoiceTranscript = (transcript: string) => {
+    console.log("[UI] Voice transcript received:", transcript);
+    // Set the transcript in the textarea
+    setAgentInput(transcript);
+    // Clear any voice errors
+    setVoiceError(null);
+  };
+
+  const handleVoiceError = (error: string) => {
+    console.error("[UI] Voice error:", error);
+    setVoiceError(error);
+  };
+
   const handleAgentSubmit = async (
     e: React.FormEvent,
     extraData: Record<string, unknown> = {}
@@ -102,6 +117,7 @@ function ChatInterface() {
     const message = agentInput;
     console.log("[UI] User submitting message:", message);
     setAgentInput("");
+    setVoiceError(null); // Clear any voice errors
 
     // Send message to agent
     await sendMessage(
@@ -538,7 +554,17 @@ function ChatInterface() {
                 rows={2}
                 style={{ height: textareaHeight }}
               />
-              <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
+              {voiceError && (
+                <div className="text-xs text-red-500 mt-1 px-3">
+                  {voiceError}
+                </div>
+              )}
+              <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end gap-2">
+                <VoiceRecorder
+                  onTranscript={handleVoiceTranscript}
+                  onError={handleVoiceError}
+                  disabled={pendingToolCallConfirmation}
+                />
                 {status === "submitted" || status === "streaming" ? (
                   <button
                     type="button"
