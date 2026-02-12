@@ -102,11 +102,11 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           });
 
           if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = (await response.json()) as { error?: string };
             throw new Error(errorData.error || "Transcription failed");
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as { text?: string };
           console.log("[VOICE] Transcription result:", data.text);
 
           if (!data.text || data.text.trim() === "") {
@@ -144,42 +144,25 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     };
   }, []);
 
+  // Minimal UI: a single mic button with visual recording state (no visible text)
   return (
-    <div className="flex items-center gap-2">
-      {isRecording ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          shape="square"
-          className="rounded-full h-9 w-9 animate-pulse"
-          onClick={stopRecording}
-          disabled={isTranscribing}
-          aria-label="Stop recording"
-          title="Stop recording"
-        >
-          <Stop size={16} className="text-red-500" />
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="md"
-          shape="square"
-          className="rounded-full h-9 w-9"
-          onClick={startRecording}
-          disabled={disabled || isTranscribing}
-          aria-label="Start voice recording"
-          title="Click to start recording (press again to stop and transcribe)"
-        >
+    <div>
+      <Button
+        type="button"
+        variant={isRecording ? "secondary" : "ghost"}
+        size="md"
+        shape="square"
+        className={`rounded-full h-9 w-9 flex items-center justify-center ${isRecording ? 'bg-red-600 animate-pulse' : ''}`}
+        onClick={isRecording ? stopRecording : startRecording}
+        disabled={disabled || isTranscribing}
+        aria-label={isRecording ? 'Stop recording' : 'Start voice recording'}
+      >
+        {isRecording ? (
+          <Stop size={16} className="text-white" />
+        ) : (
           <Microphone size={16} />
-        </Button>
-      )}
-      {isTranscribing && (
-        <span className="text-xs text-muted-foreground animate-pulse">
-          Transcribing...
-        </span>
-      )}
+        )}
+      </Button>
     </div>
   );
 };
