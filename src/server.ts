@@ -82,6 +82,54 @@ export class Chat extends AIChatAgent<Env> {
     console.log("[CHAT] Request URL:", request.url);
     console.log("[CHAT] Request method:", request.method);
 
+    const url = new URL(request.url);
+
+    // Internal notification endpoint used by server to notify this Chat DO
+    if (url.pathname === "/notify") {
+      try {
+        const payload = await request.json();
+        const {
+          event,
+          requestType,
+          status,
+          reason,
+          managerName,
+          requestId
+        } = payload as {
+          event: string;
+          requestType?: string;
+          status?: string;
+          reason?: string;
+          managerName?: string;
+          requestId?: string;
+        };
+
+        if (event === "request_decided") {
+          const message =
+            status === "approved"
+              ? `✅ Your ${requestType}${requestId ? ` (${requestId})` : ""} request was approved by ${managerName}.`
+              : `❌ Your ${requestType}${requestId ? ` (${requestId})` : ""} request was denied by ${managerName}. Reason: ${reason || "No reason provided."}`;
+
+          await this.saveMessages([
+            ...this.messages,
+            {
+              id: generateId(),
+              role: "assistant",
+              parts: [{ type: "text", text: message }],
+              metadata: { createdAt: new Date().toISOString() }
+            }
+          ]);
+
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ error: "unknown event" }), { status: 400 });
+      } catch (err) {
+        console.error("[CHAT] /notify handler error:", err);
+        return new Response("Invalid notify payload", { status: 400 });
+      }
+    }
+
     // Extract user ID from headers set by middleware
     const userId = request.headers.get("X-User-Id");
     const username = request.headers.get("X-Username");
@@ -141,7 +189,8 @@ export class Chat extends AIChatAgent<Env> {
             metadata: { createdAt: new Date().toISOString() }
           }
         ]);
-        return;
+        // Return an explicit Response to signal the handler handled the event
+        return new Response(null, { status: 204 });
       }
 
       // Safety check: only process user messages, not assistant responses
@@ -157,7 +206,8 @@ export class Chat extends AIChatAgent<Env> {
           this.messages.slice(-2).map((m) => m.role)
         );
         finishStream("");
-        return;
+        // Return an explicit Response to avoid agents SDK logging 'no response'
+        return new Response(null, { status: 204 });
       }
 
       const isTextPart = (part: { type: string }): part is TextUIPart =>
@@ -177,7 +227,8 @@ export class Chat extends AIChatAgent<Env> {
             metadata: { createdAt: new Date().toISOString() }
           }
         ]);
-        return;
+        // Return explicit Response so framework knows message was handled
+        return new Response(null, { status: 204 });
       }
 
       console.log("[AGENT] User message:", textPart.text);
@@ -202,7 +253,8 @@ export class Chat extends AIChatAgent<Env> {
             metadata: { createdAt: new Date().toISOString() }
           }
         ]);
-        return;
+        // Return explicit Response so the agent runtime won't log a missing response
+        return new Response(null, { status: 401 });
       }
 
       // Build conversation history (exclude the current user message)
@@ -383,6 +435,8 @@ export class Chat extends AIChatAgent<Env> {
         "parts and returning to client"
       );
       finishStream(result.response);
+      // Return explicit Response so the agents runtime knows the message was handled
+      return new Response(null, { status: 200 });
     } catch (error) {
       console.error("[AGENT] Error in onChatMessage:", error);
       const errorMsg =
@@ -397,6 +451,8 @@ export class Chat extends AIChatAgent<Env> {
           metadata: { createdAt: new Date().toISOString() }
         }
       ]);
+      // Return explicit error Response to avoid 'no response' runtime log
+      return new Response(null, { status: 500 });
     }
   }
 
@@ -1127,6 +1183,357 @@ app.get("/api/receipts/:id", async (c) => {
   } catch (error) {
     console.error("[RECEIPT] Fetch error:", error);
     return c.json({ error: "Failed to fetch receipt" }, 500);
+  }
+});
+
+// -------------------------
+// Manager / request routes
+// -------------------------
+
+// GET pending requests for manager
+app.get("/api/manager/requests", async (c) => {
+  try {
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) return c.json({ error: "Authentication required" }, 401);
+
+    const dbUser = await c.env.APP_DB.prepare(
+      "SELECT role FROM users WHERE id = ?"
+    )
+      .bind(user.id)
+      .first<{ role: string }>();
+
+    if (!dbUser || dbUser.role !== "manager")
+      return c.json({ error: "Forbidden" }, 403);
+
+    const url = new URL(c.req.raw.url);
+    const limit = Number(url.searchParams.get("limit") || "50");
+
+    const ptoPending = await c.env.APP_DB.prepare(
+      `SELECT p.id, p.employee_id, u.username AS employee_name, p.start_date, p.end_date, p.total_days, p.reason, p.created_at, p.escalation_reason
+       FROM pto_requests p
+       JOIN users u ON p.employee_id = u.id
+       WHERE p.manager_id = ? AND p.status = 'pending'
+       ORDER BY p.created_at DESC
+       LIMIT ?`
+    )
+      .bind(user.id, limit)
+      .all();
+
+    const expensePending = await c.env.APP_DB.prepare(
+      `SELECT e.id, e.employee_id, u.username AS employee_name, e.category, e.amount, e.currency, e.description, e.created_at, e.escalation_reason
+       FROM expense_requests e
+       JOIN users u ON e.employee_id = u.id
+       WHERE e.manager_id = ? AND e.status = 'pending'
+       ORDER BY e.created_at DESC
+       LIMIT ?`
+    )
+      .bind(user.id, limit)
+      .all();
+
+    return c.json({
+      pto_pending: ptoPending.results,
+      expense_pending: expensePending.results,
+      counts: {
+        pto_pending: ptoPending.results.length,
+        expense_pending: expensePending.results.length
+      }
+    });
+  } catch (error) {
+    console.error("[MANAGER] Error fetching pending requests:", error);
+    return c.json({ error: "Failed to fetch pending requests" }, 500);
+  }
+});
+
+// POST manager decision (approve/deny)
+app.post("/api/manager/decisions/:id", async (c) => {
+  try {
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) return c.json({ error: "Authentication required" }, 401);
+
+    const dbUser = await c.env.APP_DB.prepare(
+      "SELECT role, username FROM users WHERE id = ?"
+    )
+      .bind(user.id)
+      .first<{ role: string; username: string }>();
+
+    if (!dbUser || dbUser.role !== "manager")
+      return c.json({ error: "Forbidden" }, 403);
+
+    const requestId = c.req.param("id");
+    const body = await c.req.json();
+    const { request_type, decision, reason } = body as {
+      request_type: "pto" | "expense";
+      decision: "approved" | "denied";
+      reason?: string;
+    };
+
+    if (!request_type || !decision) {
+      return c.json({ error: "Missing request_type or decision" }, 400);
+    }
+
+    if (request_type === "pto") {
+      const pto = await c.env.APP_DB.prepare(
+        "SELECT * FROM pto_requests WHERE id = ?"
+      )
+        .bind(requestId)
+        .first<any>();
+
+      if (!pto) return c.json({ error: "PTO request not found" }, 404);
+      if (pto.manager_id !== user.id)
+        return c.json({ error: "Not authorized for this request" }, 403);
+      if (pto.status !== "pending")
+        return c.json({ error: "Request is not pending" }, 409);
+
+      const now = Math.floor(Date.now() / 1000);
+
+      if (decision === "approved") {
+        await c.env.APP_DB.prepare(
+          "UPDATE pto_requests SET status = ?, approval_notes = ?, approved_at = ?, updated_at = ? WHERE id = ?"
+        )
+          .bind("approved", reason || null, now, now, requestId)
+          .run();
+
+        // update balance
+        await c.env.APP_DB.prepare(
+          "UPDATE pto_balances SET total_used = total_used + ?, current_balance = current_balance - ? WHERE employee_id = ?"
+        )
+          .bind(pto.total_days, pto.total_days, pto.employee_id)
+          .run();
+      } else {
+        await c.env.APP_DB.prepare(
+          "UPDATE pto_requests SET status = ?, approval_notes = ?, updated_at = ? WHERE id = ?"
+        )
+          .bind("denied", reason || null, now, requestId)
+          .run();
+      }
+
+      // Audit log
+      await c.env.APP_DB.prepare(
+        `INSERT INTO audit_log (id, entity_type, entity_id, action, actor_id, actor_type, details) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          crypto.randomUUID(),
+          "pto_request",
+          requestId,
+          decision,
+          user.id,
+          "user",
+          JSON.stringify({ approval_notes: reason || null, previous_status: "pending", new_status: decision })
+        )
+        .run();
+
+      // Notify employee's Chat DO
+      try {
+        const chatId = c.env.Chat.idFromName(`${pto.employee_id}-chat`);
+        const chatDO = c.env.Chat.get(chatId);
+        await chatDO.fetch("http://internal/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "request_decided",
+            requestType: "PTO",
+            status: decision,
+            reason: reason || null,
+            managerName: dbUser.username,
+            requestId
+          })
+        });
+      } catch (notifyErr) {
+        console.warn("[MANAGER] Failed to notify Chat DO:", notifyErr);
+      }
+
+      return c.json({ success: true, request_id: requestId });
+    }
+
+    // EXPENSE path
+    if (request_type === "expense") {
+      const exp = await c.env.APP_DB.prepare(
+        "SELECT * FROM expense_requests WHERE id = ?"
+      )
+        .bind(requestId)
+        .first<any>();
+
+      if (!exp) return c.json({ error: "Expense request not found" }, 404);
+      if (exp.manager_id !== user.id)
+        return c.json({ error: "Not authorized for this request" }, 403);
+      if (exp.status !== "pending")
+        return c.json({ error: "Request is not pending" }, 409);
+
+      const now = Math.floor(Date.now() / 1000);
+
+      if (decision === "approved") {
+        await c.env.APP_DB.prepare(
+          "UPDATE expense_requests SET status = ?, approval_notes = ?, approved_at = ?, updated_at = ? WHERE id = ?"
+        )
+          .bind("approved", reason || null, now, now, requestId)
+          .run();
+      } else {
+        await c.env.APP_DB.prepare(
+          "UPDATE expense_requests SET status = ?, approval_notes = ?, denied_at = ?, updated_at = ? WHERE id = ?"
+        )
+          .bind("denied", reason || null, now, now, requestId)
+          .run();
+      }
+
+      // Audit log
+      await c.env.APP_DB.prepare(
+        `INSERT INTO audit_log (id, entity_type, entity_id, action, actor_id, actor_type, details) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          crypto.randomUUID(),
+          "expense_request",
+          requestId,
+          decision,
+          user.id,
+          "user",
+          JSON.stringify({ approval_notes: reason || null, previous_status: "pending", new_status: decision })
+        )
+        .run();
+
+      // Notify employee's Chat DO
+      try {
+        const chatId = c.env.Chat.idFromName(`${exp.employee_id}-chat`);
+        const chatDO = c.env.Chat.get(chatId);
+        await chatDO.fetch("http://internal/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "request_decided",
+            requestType: "Expense",
+            status: decision,
+            reason: reason || null,
+            managerName: dbUser.username,
+            requestId
+          })
+        });
+      } catch (notifyErr) {
+        console.warn("[MANAGER] Failed to notify Chat DO:", notifyErr);
+      }
+
+      return c.json({ success: true, request_id: requestId });
+    }
+
+    return c.json({ error: "Unsupported request_type" }, 400);
+  } catch (error) {
+    console.error("[MANAGER] Decision error:", error);
+    return c.json({ error: "Failed to apply decision" }, 500);
+  }
+});
+
+// GET request status (employee or manager)
+app.get("/api/requests/:id/status", async (c) => {
+  try {
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) return c.json({ error: "Authentication required" }, 401);
+
+    const id = c.req.param("id");
+
+    // Try PTO
+    const pto = await c.env.APP_DB.prepare(
+      `SELECT p.*, u.username AS manager_name FROM pto_requests p LEFT JOIN users u ON p.manager_id = u.id WHERE p.id = ?`
+    )
+      .bind(id)
+      .first<any>();
+
+    if (pto) {
+      // Authorization: owner or manager
+      if (pto.employee_id !== user.id && pto.manager_id !== user.id) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      return c.json({
+        id: pto.id,
+        type: "pto",
+        status: pto.status,
+        created_at: pto.created_at,
+        updated_at: pto.updated_at,
+        approval_notes: pto.approval_notes || null,
+        denial_reason: pto.denial_reason || null,
+        manager_name: pto.manager_name || null,
+        approved_at: pto.approved_at || null,
+        escalation_reason: pto.escalation_reason || null,
+        auto_approved: pto.approval_type === "auto"
+      });
+    }
+
+    // Try Expense
+    const exp = await c.env.APP_DB.prepare(
+      `SELECT e.*, u.username AS manager_name FROM expense_requests e LEFT JOIN users u ON e.manager_id = u.id WHERE e.id = ?`
+    )
+      .bind(id)
+      .first<any>();
+
+    if (exp) {
+      if (exp.employee_id !== user.id && exp.manager_id !== user.id) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      return c.json({
+        id: exp.id,
+        type: "expense",
+        status: exp.status,
+        created_at: exp.created_at,
+        updated_at: exp.updated_at,
+        approval_notes: exp.approval_notes || null,
+        denial_reason: exp.approval_notes || null,
+        manager_name: exp.manager_name || null,
+        approved_at: exp.approved_at || null,
+        escalation_reason: exp.escalation_reason || null,
+        auto_approved: !!exp.auto_approved
+      });
+    }
+
+    return c.json({ error: "Request not found" }, 404);
+  } catch (error) {
+    console.error("[REQUEST STATUS] Error:", error);
+    return c.json({ error: "Failed to fetch request status" }, 500);
+  }
+});
+
+// GET current user's request history
+app.get("/api/requests/history", async (c) => {
+  try {
+    const user = await getUserFromSession(c.req.raw, c.env);
+    if (!user) return c.json({ error: "Authentication required" }, 401);
+
+    const url = new URL(c.req.raw.url);
+    const type = url.searchParams.get("type") || "all"; // pto | expense | all
+    const statusFilter = url.searchParams.get("status") || "all";
+    const limit = Number(url.searchParams.get("limit") || "50");
+
+    const results: any[] = [];
+
+    if (type === "pto" || type === "all") {
+      let query = "SELECT * FROM pto_requests WHERE employee_id = ?";
+      const binds: any[] = [user.id];
+      if (statusFilter !== "all") {
+        query += " AND status = ?";
+        binds.push(statusFilter);
+      }
+      query += " ORDER BY created_at DESC LIMIT ?";
+      binds.push(limit);
+      const rows = await c.env.APP_DB.prepare(query).bind(...binds).all();
+      results.push(...rows.results.map((r: any) => ({ ...r, type: "pto" })));
+    }
+
+    if (type === "expense" || type === "all") {
+      let query = "SELECT * FROM expense_requests WHERE employee_id = ?";
+      const binds: any[] = [user.id];
+      if (statusFilter !== "all") {
+        query += " AND status = ?";
+        binds.push(statusFilter);
+      }
+      query += " ORDER BY created_at DESC LIMIT ?";
+      binds.push(limit);
+      const rows = await c.env.APP_DB.prepare(query).bind(...binds).all();
+      results.push(...rows.results.map((r: any) => ({ ...r, type: "expense" })));
+    }
+
+    // Sort combined results by created_at desc
+    results.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+    return c.json(results.slice(0, limit));
+  } catch (error) {
+    console.error("[REQUEST HISTORY] Error:", error);
+    return c.json({ error: "Failed to fetch request history" }, 500);
   }
 });
 

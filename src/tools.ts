@@ -1378,6 +1378,222 @@ const submit_expense_request: Tool = {
   }
 };
 
+// -------------------------
+// Manager / escalation tools
+// -------------------------
+
+const get_request_status: Tool = {
+  name: "get_request_status",
+  description: "Check the status of a PTO or expense request (by id) or list recent requests for the current user.",
+  parameters: {
+    type: "object",
+    properties: {
+      request_id: { type: "string", description: "Optional request id to fetch" },
+      request_type: { type: "string", enum: ["pto", "expense"], description: "Optional type filter" },
+      days_back: { type: "number", description: "Optional: look back N days" }
+    },
+    required: []
+  },
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { request_id, request_type, days_back } = params as {
+      request_id?: string;
+      request_type?: "pto" | "expense";
+      days_back?: number;
+    };
+
+    if (request_id) {
+      if (!request_type || request_type === "pto") {
+        const pto = await context.env.APP_DB.prepare(
+          `SELECT p.*, u.username AS manager_name FROM pto_requests p LEFT JOIN users u ON p.manager_id = u.id WHERE p.id = ?`
+        )
+          .bind(request_id)
+          .first<any>();
+        if (pto) {
+          return { requests: [ { id: pto.id, type: "pto", status: pto.status, created_at: pto.created_at, updated_at: pto.updated_at, approval_notes: pto.approval_notes || null, denial_reason: pto.denial_reason || null, manager_name: pto.manager_name || null, approved_at: pto.approved_at || null, escalation_reason: pto.escalation_reason || null, auto_approved: pto.approval_type === "auto" } ] };
+        }
+      }
+
+      if (!request_type || request_type === "expense") {
+        const exp = await context.env.APP_DB.prepare(
+          `SELECT e.*, u.username AS manager_name FROM expense_requests e LEFT JOIN users u ON e.manager_id = u.id WHERE e.id = ?`
+        )
+          .bind(request_id)
+          .first<any>();
+        if (exp) {
+          return { requests: [ { id: exp.id, type: "expense", status: exp.status, created_at: exp.created_at, updated_at: exp.updated_at, approval_notes: exp.approval_notes || null, denial_reason: exp.approval_notes || null, manager_name: exp.manager_name || null, approved_at: exp.approved_at || null, escalation_reason: exp.escalation_reason || null, auto_approved: !!exp.auto_approved } ] };
+        }
+      }
+
+      return { requests: [] };
+    }
+
+    const lookback = days_back && days_back > 0 ? days_back : 30;
+    const since = Math.floor(Date.now() / 1000) - lookback * 24 * 60 * 60;
+
+    const ptoRows = await context.env.APP_DB.prepare(
+      `SELECT * FROM pto_requests WHERE employee_id = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 50`
+    )
+      .bind(context.userId, since)
+      .all();
+
+    const expRows = await context.env.APP_DB.prepare(
+      `SELECT * FROM expense_requests WHERE employee_id = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 50`
+    )
+      .bind(context.userId, since)
+      .all();
+
+    const requests = [
+      ...((ptoRows.results || []) as any[]).map((r) => ({ ...r, type: "pto" })),
+      ...((expRows.results || []) as any[]).map((r) => ({ ...r, type: "expense" }))
+    ].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+    return { requests };
+  }
+};
+
+const list_pending_escalations: Tool = {
+  name: "list_pending_escalations",
+  description: "List all escalated/pending requests assigned to the authenticated manager.",
+  parameters: { type: "object", properties: {}, required: [] },
+  execute: async (_params: Record<string, unknown>, context: ToolContext) => {
+    const user = await context.env.APP_DB.prepare("SELECT role FROM users WHERE id = ?").bind(context.userId).first<{ role: string }>();
+    if (!user || user.role !== "manager") throw new Error("Not a manager");
+
+    const pto = await context.env.APP_DB.prepare(
+      `SELECT p.id, p.employee_id, u.username AS employee_name, p.start_date, p.end_date, p.total_days, p.reason, p.created_at, p.escalation_reason
+       FROM pto_requests p JOIN users u ON p.employee_id = u.id WHERE p.manager_id = ? AND p.status = 'pending' ORDER BY p.created_at DESC`
+    )
+      .bind(context.userId)
+      .all();
+
+    const expenses = await context.env.APP_DB.prepare(
+      `SELECT e.id, e.employee_id, u.username AS employee_name, e.category, e.amount, e.currency, e.description, e.created_at, e.escalation_reason
+       FROM expense_requests e JOIN users u ON e.employee_id = u.id WHERE e.manager_id = ? AND e.status = 'pending' ORDER BY e.created_at DESC`
+    )
+      .bind(context.userId)
+      .all();
+
+    return { pto_pending: pto.results, expense_pending: expenses.results };
+  }
+};
+
+const escalate_request: Tool = {
+  name: "escalate_request",
+  description: "Escalate a PTO or Expense request to the employee's manager (set status to pending and attach escalation_reason).",
+  parameters: {
+    type: "object",
+    properties: {
+      request_id: { type: "string" },
+      request_type: { type: "string", enum: ["pto", "expense"] },
+      escalation_reason: { type: "string" }
+    },
+    required: ["request_id", "request_type", "escalation_reason"]
+  },
+  execute: async (params: Record<string, unknown>, context: ToolContext) => {
+    const { request_id, request_type, escalation_reason } = params as {
+      request_id: string;
+      request_type: "pto" | "expense";
+      escalation_reason: string;
+    };
+
+    if (request_type === "pto") {
+      let req = await context.env.APP_DB.prepare("SELECT * FROM pto_requests WHERE id = ?").bind(request_id).first<any>();
+
+      // Fallback: if the AI supplied a non-existent or placeholder id, try to find the most-recent PTO request for the current user
+      if (!req) {
+        console.warn("[TOOL] escalate_request - PTO request id not found, attempting fallback lookup for user", context.userId);
+        req = await context.env.APP_DB.prepare(
+          `SELECT * FROM pto_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1`
+        )
+          .bind(context.userId)
+          .first<any>();
+
+        if (!req) {
+          throw new Error("PTO request not found");
+        }
+      }
+
+      const usedRequestId = req.id;
+      const managerRow = await context.env.APP_DB.prepare("SELECT manager_id FROM users WHERE id = ?").bind(req.employee_id).first<any>();
+      const managerId = managerRow?.manager_id || null;
+
+      await context.env.APP_DB.prepare("UPDATE pto_requests SET status = 'pending', escalation_reason = ?, manager_id = ? WHERE id = ?").bind(escalation_reason, managerId, usedRequestId).run();
+
+      await log_audit_event.execute({ entity_type: "pto_request", entity_id: usedRequestId, action: "escalated", details: { escalation_reason, fallback_used: request_id !== usedRequestId } }, context);
+
+      if (managerId) {
+        try {
+          const chatId = context.env.Chat.idFromName(`${managerId}-chat`);
+          const chatDO = context.env.Chat.get(chatId);
+          await chatDO.fetch("http://internal/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: "request_escalated", requestType: "PTO", requestId: usedRequestId, escalation_reason })
+          });
+        } catch (err) {
+          console.warn("[TOOL] escalate_request - failed to notify manager DO", err);
+        }
+      }
+
+      return { success: true, manager_id: managerId, message: request_id === usedRequestId ? "Escalated to manager" : `Escalated to manager (fallback to request ${usedRequestId})` };
+    }
+
+    if (request_type === "expense") {
+      let req = await context.env.APP_DB.prepare("SELECT * FROM expense_requests WHERE id = ?").bind(request_id).first<any>();
+
+      // Fallback: try to find most recent expense request for this user if the provided id doesn't exist
+      if (!req) {
+        console.warn("[TOOL] escalate_request - Expense request id not found, attempting fallback lookup for user", context.userId);
+        req = await context.env.APP_DB.prepare(
+          `SELECT * FROM expense_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1`
+        )
+          .bind(context.userId)
+          .first<any>();
+
+        if (!req) {
+          throw new Error("Expense request not found");
+        }
+      }
+
+      const usedRequestId = req.id;
+      const managerRow = await context.env.APP_DB.prepare("SELECT manager_id FROM users WHERE id = ?").bind(req.employee_id).first<any>();
+      const managerId = managerRow?.manager_id || null;
+
+      await context.env.APP_DB.prepare("UPDATE expense_requests SET status = 'pending', escalation_reason = ?, manager_id = ? WHERE id = ?").bind(escalation_reason, managerId, usedRequestId).run();
+
+      await log_audit_event.execute({ entity_type: "expense_request", entity_id: usedRequestId, action: "escalated", details: { escalation_reason, fallback_used: request_id !== usedRequestId } }, context);
+
+      if (managerId) {
+        try {
+          const chatId = context.env.Chat.idFromName(`${managerId}-chat`);
+          const chatDO = context.env.Chat.get(chatId);
+          await chatDO.fetch("http://internal/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: "request_escalated", requestType: "Expense", requestId: usedRequestId, escalation_reason })
+          });
+        } catch (err) {
+          console.warn("[TOOL] escalate_request - failed to notify manager DO", err);
+        }
+      }
+
+      return { success: true, manager_id: managerId, message: request_id === usedRequestId ? "Escalated to manager" : `Escalated to manager (fallback to request ${usedRequestId})` };
+    }
+
+    throw new Error("Unsupported request_type");
+  }
+};
+
+const get_employee_directs: Tool = {
+  name: "get_employee_directs",
+  description: "Return a list of direct reports for the authenticated manager.",
+  parameters: { type: "object", properties: {}, required: [] },
+  execute: async (_params: Record<string, unknown>, context: ToolContext) => {
+    const directs = await context.env.APP_DB.prepare("SELECT id, username, employee_level, department FROM users WHERE manager_id = ? ORDER BY username ASC").bind(context.userId).all();
+    return { direct_reports: directs.results };
+  }
+};
+
 /**
  * Tool 14: Log Audit Event
  * Records all agent actions for compliance
@@ -1461,6 +1677,11 @@ export const tools: Record<string, Tool> = {
   get_expense_history,
   validate_expense_policy,
   submit_expense_request,
+  // Manager / escalation tools
+  get_request_status,
+  list_pending_escalations,
+  escalate_request,
+  get_employee_directs,
   show_expense_dialog,
   log_audit_event
 };

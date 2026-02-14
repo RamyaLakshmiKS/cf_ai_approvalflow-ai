@@ -200,7 +200,7 @@ When you have all the information you need and NO MORE TOOLS are needed, provide
             );
           }
 
-          const params = JSON.parse(paramsStr);
+          const params = tolerantParse(paramsStr);
           const toolCallId = crypto.randomUUID();
 
           // Stream tool input (before execution)
@@ -270,7 +270,8 @@ When you have all the information you need and NO MORE TOOLS are needed, provide
             await onToolUpdate({
               toolName: toolCallMatch[1],
               toolCallId,
-              args: parametersMatch ? JSON.parse(parametersMatch[1]) : {},
+              args: parametersMatch ? tolerantParse(parametersMatch[1]) : {},
+              
               state: "output-error",
               error: errorMsg
             });
