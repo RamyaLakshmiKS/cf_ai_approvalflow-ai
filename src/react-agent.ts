@@ -5,7 +5,7 @@
  * with pattern-based tool triggering for expense dialogs
  */
 
-import { streamText } from "ai";
+import { generateText } from "ai";
 import type { LanguageModel } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { getSystemPrompt } from "./prompts";
@@ -107,7 +107,9 @@ export async function runReActAgent(
       console.log(`[AGENT] ReAct iteration ${iteration + 1}/${maxIterations}`);
 
       // Get AI response
-      const result = await streamText({
+      // generateText avoids workers-ai-provider's getMappedStream which emits
+      // each text delta twice (once for chunk.response, once for chunk.choices[0].delta.content).
+      const result = await generateText({
         model,
         system:
           getSystemPrompt() +
@@ -140,13 +142,7 @@ When you have all the information you need and NO MORE TOOLS are needed, provide
         temperature: 0.2
       });
 
-      // Collect response
-      let responseText = "";
-      for await (const chunk of result.fullStream) {
-        if (chunk.type === "text-delta") {
-          responseText += chunk.text;
-        }
-      }
+      const responseText = result.text;
 
       console.log(
         `[AGENT] Iteration ${iteration + 1} response:`,

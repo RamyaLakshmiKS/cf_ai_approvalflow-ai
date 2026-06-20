@@ -88,7 +88,7 @@ const search_employee_handbook: Tool = {
     const prompt = getHandbookSearchPrompt(handbookContent, query);
 
     const response = (await context.env.AI.run(
-      "@cf/meta/llama-3.1-8b-instruct" as keyof AiModels,
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as keyof AiModels,
       {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 1000
