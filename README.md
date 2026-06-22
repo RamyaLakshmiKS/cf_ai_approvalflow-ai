@@ -1,10 +1,16 @@
-<p align="center">
-  <img src="public/Enterprise AI Approval Workflow Logo.png" alt="ApprovalFlow AI" width="220" />
-</p>
-
-# ApprovalFlow AI
-
-> **🚀 [Try the Live Demo](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)** | Login with the quick demo options to test PTO requests & expense reimbursement
+<table>
+  <tr>
+    <td width="200">
+      <img src="public/Enterprise AI Approval Workflow Logo.png" alt="ApprovalFlow AI" width="200" />
+    </td>
+    <td valign="middle">
+      <h1>ApprovalFlow AI</h1>
+      <blockquote>
+        <strong>🚀 <a href="https://approvalflow-ai.ra-kuppasundarar.workers.dev/">Try the Live Demo</a></strong> | Login with the quick demo options to test PTO requests &amp; expense reimbursement
+      </blockquote>
+    </td>
+  </tr>
+</table>
 
 ## Your company's instant HR — get PTOs approved & expenses reimbursed in seconds, all in natural language
 
