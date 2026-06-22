@@ -64,7 +64,14 @@ export async function runReActAgent(
   }> = [];
 
   // Create Workers AI instance
-  const workersai = createWorkersAI({ binding: context.env.AI });
+  const workersai = createWorkersAI({ 
+    binding: context.env.AI,
+    gateway: {
+      id: "approvalflow-ai",
+      skipCache: false,
+      cacheTtl: 3600,
+    }
+  });
   // Use explicit model identifier. Types for the provider's model union are not exported,
   // so cast the factory to a permissive function type using `unknown` to avoid `any`.
   const model = (workersai as unknown as (m: string) => LanguageModel)(
@@ -139,7 +146,8 @@ CRITICAL: When copying UUIDs (like receipt_id or employee_id) from user messages
 
 When you have all the information you need and NO MORE TOOLS are needed, provide your final response without any tool calls.`,
         messages: currentMessages,
-        temperature: 0.2
+        temperature: 0.2,
+        maxOutputTokens: 1024
       });
 
       const responseText = result.text;

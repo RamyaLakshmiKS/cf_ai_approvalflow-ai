@@ -37,9 +37,13 @@
     }
   ],
   "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
   },
+  // Uncomment after deploying the tail worker (cd src && wrangler deploy --config wrangler.tail.jsonc):
+  // "tail_consumers": [{ "service": "approvalflow-ai-tail" }],
   // Example env vars can be defined here. Use Wrangler secrets in production.
   "d1_databases": [
     {

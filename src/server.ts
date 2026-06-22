@@ -1,5 +1,6 @@
 import { routeAgentRequest, type Schedule } from "agents";
 import { AIChatAgent } from "agents/ai-chat-agent";
+import type { Observability } from "agents/observability";
 import {
   type DynamicToolCall,
   type DynamicToolResult,
@@ -74,6 +75,22 @@ const ZERO_USAGE: LanguageModelUsage = {
  * using the ReAct (Reasoning + Acting) framework
  */
 export class Chat extends AIChatAgent<Env> {
+  override observability: Observability = {
+    emit(event) {
+      const isError = event.type.endsWith(":error");
+      const entry = JSON.stringify({
+        src: "agent-sdk",
+        evt: event.type,
+        event
+      });
+      if (isError) {
+        console.error(entry);
+      } else {
+        console.log(entry);
+      }
+    }
+  };
+
   /**
    * Override fetch to capture user ID from headers and persist it
    */
