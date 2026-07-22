@@ -5,7 +5,7 @@
  * with pattern-based tool triggering for expense dialogs
  */
 
-import { streamText } from "ai";
+import { generateText } from "ai";
 import type { LanguageModel } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { getSystemPrompt } from "./prompts";
@@ -64,7 +64,14 @@ export async function runReActAgent(
   }> = [];
 
   // Create Workers AI instance
-  const workersai = createWorkersAI({ binding: context.env.AI });
+  const workersai = createWorkersAI({
+    binding: context.env.AI,
+    gateway: {
+      id: "approvalflow-ai",
+      skipCache: false,
+      cacheTtl: 3600
+    }
+  });
   // Use explicit model identifier. Types for the provider's model union are not exported,
   // so cast the factory to a permissive function type using `unknown` to avoid `any`.
   const model = (workersai as unknown as (m: string) => LanguageModel)(
@@ -107,7 +114,9 @@ export async function runReActAgent(
       console.log(`[AGENT] ReAct iteration ${iteration + 1}/${maxIterations}`);
 
       // Get AI response
-      const result = await streamText({
+      // generateText avoids workers-ai-provider's getMappedStream which emits
+      // each text delta twice (once for chunk.response, once for chunk.choices[0].delta.content).
+      const result = await generateText({
         model,
         system:
           getSystemPrompt() +
@@ -137,16 +146,11 @@ CRITICAL: When copying UUIDs (like receipt_id or employee_id) from user messages
 
 When you have all the information you need and NO MORE TOOLS are needed, provide your final response without any tool calls.`,
         messages: currentMessages,
-        temperature: 0.2
+        temperature: 0.2,
+        maxOutputTokens: 1024
       });
 
-      // Collect response
-      let responseText = "";
-      for await (const chunk of result.fullStream) {
-        if (chunk.type === "text-delta") {
-          responseText += chunk.text;
-        }
-      }
+      const responseText = result.text;
 
       console.log(
         `[AGENT] Iteration ${iteration + 1} response:`,

@@ -62,8 +62,8 @@ The agent demonstrates autonomy, multi-step problem solving, and dynamic adaptat
         ┌────────────────────────────┐
         │   ACTION (Tool Call)       │
         │  Call: check_blackouts     │
-        │  Args: {start: "2025-11-18"│
-        │         end: "2025-11-22"} │
+        │  Args: {start: "2026-11-18"│
+        │         end: "2026-11-22"} │
         └────────────┬───────────────┘
                      │
                      ▼
@@ -686,8 +686,8 @@ ACTION:
 {
   "action": "calculate_business_days",
   "action_input": {
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22"
+    "start_date": "2026-12-20",
+    "end_date": "2026-12-22"
   }
 }
 \`\`\`
@@ -717,8 +717,8 @@ ACTION:
   "action": "validate_pto_policy",
   "action_input": {
     "employee_id": "user123",
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22",
+    "start_date": "2026-12-20",
+    "end_date": "2026-12-22",
     "reason": "Personal time"
   }
 }
@@ -734,8 +734,8 @@ ACTION:
   "action": "submit_pto_request",
   "action_input": {
     "employee_id": "user123",
-    "start_date": "2025-12-20",
-    "end_date": "2025-12-22",
+    "start_date": "2026-12-20",
+    "end_date": "2026-12-22",
     "total_days": 3,
     "reason": "Personal time",
     "status": "auto_approved",

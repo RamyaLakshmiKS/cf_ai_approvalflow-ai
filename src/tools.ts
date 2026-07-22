@@ -88,7 +88,7 @@ const search_employee_handbook: Tool = {
     const prompt = getHandbookSearchPrompt(handbookContent, query);
 
     const response = (await context.env.AI.run(
-      "@cf/meta/llama-3.1-8b-instruct" as keyof AiModels,
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as keyof AiModels,
       {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 1000
@@ -113,16 +113,11 @@ const get_pto_balance: Tool = {
     "Retrieves the employee's current PTO balance, accrued days, used days, and rollover information.",
   parameters: {
     type: "object",
-    properties: {
-      employee_id: {
-        type: "string",
-        description: "The employee's ID (optional, defaults to current user)"
-      }
-    },
+    properties: {},
     required: []
   },
-  execute: async (params: { employee_id?: string }, context: ToolContext) => {
-    const userId = params.employee_id || context.userId;
+  execute: async (_params: Record<string, unknown>, context: ToolContext) => {
+    const userId = context.userId;
     console.log("[TOOL] get_pto_balance called for employee:", userId);
 
     const ptoBalance = await context.env.APP_DB.prepare(
@@ -221,10 +216,6 @@ const get_pto_history: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
       limit: {
         type: "number",
         description: "Maximum number of records to return (default: 10)"
@@ -238,10 +229,10 @@ const get_pto_history: Tool = {
     required: []
   },
   execute: async (
-    params: { employee_id?: string; limit?: number; status_filter?: string },
+    params: { limit?: number; status_filter?: string },
     context: ToolContext
   ) => {
-    const userId = params.employee_id || context.userId;
+    const userId = context.userId;
     const limit = params.limit || 10;
     const statusFilter = params.status_filter || "all";
     console.log("[TOOL] get_pto_history called with:", {
@@ -408,10 +399,6 @@ const validate_pto_policy: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
       start_date: {
         type: "string",
         description: "Start date in ISO 8601 format (YYYY-MM-DD)"
@@ -429,15 +416,12 @@ const validate_pto_policy: Tool = {
   },
   execute: async (params: Record<string, unknown>, context: ToolContext) => {
     const { start_date, end_date } = params as {
-      employee_id?: string;
       start_date: string;
       end_date: string;
       reason?: string;
     };
 
-    // Use employee_id from params or default to authenticated user
-    const employeeId =
-      (params.employee_id as string | undefined) || context.userId;
+    const employeeId = context.userId;
 
     console.log("[TOOL] validate_pto_policy called with:", {
       employee_id: employeeId,
@@ -463,10 +447,7 @@ const validate_pto_policy: Tool = {
     }
 
     // Get balance
-    const balance = await get_pto_balance.execute(
-      { employee_id: employeeId },
-      context
-    );
+    const balance = await get_pto_balance.execute({}, context);
 
     // Calculate business days
     const businessDays = (await calculate_business_days.execute(
@@ -562,10 +543,6 @@ const submit_pto_request: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
       start_date: {
         type: "string",
         description: "Start date in ISO 8601 format (YYYY-MM-DD)"
@@ -615,7 +592,6 @@ const submit_pto_request: Tool = {
       approval_type,
       validation_notes
     } = params as {
-      employee_id?: string;
       start_date: string;
       end_date: string;
       total_days: number;
@@ -625,9 +601,7 @@ const submit_pto_request: Tool = {
       validation_notes?: string;
     };
 
-    // Use employee_id from params or default to authenticated user
-    const employeeId =
-      (params.employee_id as string | undefined) || context.userId;
+    const employeeId = context.userId;
 
     const requestId = crypto.randomUUID();
     console.log("[TOOL] submit_pto_request called with:", {
@@ -886,10 +860,6 @@ const get_expense_history: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID to query"
-      },
       timeframe: {
         type: "string",
         enum: ["today", "this_week", "this_month", "all"],
@@ -901,14 +871,14 @@ const get_expense_history: Tool = {
           "Optional: filter by expense category (meals, travel, etc.)"
       }
     },
-    required: ["employee_id", "timeframe"]
+    required: ["timeframe"]
   },
   execute: async (params, context: ToolContext) => {
-    const { employee_id, timeframe, category } = params as {
-      employee_id: string;
+    const { timeframe, category } = params as {
       timeframe: "today" | "this_week" | "this_month" | "all";
       category?: string;
     };
+    const employee_id = context.userId;
 
     console.log(
       `[TOOL] get_expense_history: ${timeframe} for employee ${employee_id}`
@@ -978,10 +948,6 @@ const validate_expense_policy: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
       amount: {
         type: "number",
         description: "Expense amount"
@@ -1009,7 +975,6 @@ const validate_expense_policy: Tool = {
   },
   execute: async (params, context: ToolContext) => {
     const { amount, category, description, has_receipt } = params as {
-      employee_id?: string;
       amount: number;
       category: string;
       description?: string;
@@ -1021,9 +986,7 @@ const validate_expense_policy: Tool = {
       };
     };
 
-    // Use employee_id from params or default to authenticated user
-    const employeeId =
-      (params.employee_id as string | undefined) || context.userId;
+    const employeeId = context.userId;
 
     console.log("[TOOL] validate_expense_policy called with:", {
       employee_id: employeeId,
@@ -1211,10 +1174,6 @@ const submit_expense_request: Tool = {
   parameters: {
     type: "object",
     properties: {
-      employee_id: {
-        type: "string",
-        description: "Employee ID (optional, defaults to current user)"
-      },
       category: {
         type: "string",
         description:
@@ -1249,9 +1208,7 @@ const submit_expense_request: Tool = {
     required: ["category", "amount", "description", "status"]
   },
   execute: async (params, context: ToolContext) => {
-    // Use employee_id from params or default to authenticated user
-    const employeeId =
-      (params.employee_id as string | undefined) || context.userId;
+    const employeeId = context.userId;
 
     // Get employee and manager info
     const employee = await context.env.APP_DB.prepare(

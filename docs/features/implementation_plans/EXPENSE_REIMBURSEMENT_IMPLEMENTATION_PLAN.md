@@ -1,6 +1,6 @@
 # Expense Reimbursement Feature Implementation Plan
 
-**Last Updated:** November 2025
+**Last Updated:** June 2026
 **Status:** Design & Planning
 **Owner:** Engineering Team
 **Related:** PTO Feature, ApprovalFlow AI MVP
@@ -147,7 +147,7 @@ Auto-Approve/Escalate → Manager/Notification
      ✓ Receipt parsed successfully!
 
      **Merchant:** Michelin Restaurant
-     **Date:** November 15, 2025
+     **Date:** November 15, 2026
      **Items:**
        - Dinner meal: $120.00
        - Tax: $18.00
@@ -2197,7 +2197,7 @@ Agent: "Processing receipt..."
 Agent: "✓ Receipt parsed successfully!
 
 **Merchant:** Michelin Restaurant
-**Date:** November 15, 2025
+**Date:** November 15, 2026
 **Items:**
   - Dinner meal: $120.00
   - Tax: $18.00
@@ -2304,7 +2304,7 @@ Escalated Expenses (3 pending):
    ├─ Extracted Data:
    │  └─ Vendor: Adobe Systems
    │  └─ Amount: $500.00
-   │  └─ Date: Nov 14, 2025
+   │  └─ Date: Nov 14, 2026
    ├─ Employee Reason: "Adobe Creative Cloud annual license"
    ├─ AI Notes: "Exceeds auto-approval limit. No policy violations detected."
    └─ [Approve Button] [Deny Button]
@@ -2330,7 +2330,7 @@ User: [Uploads parking_receipt.pdf showing $45]
 Agent: "✓ Receipt parsed!
 **Location:** Downtown Parking Garage
 **Amount:** $45.00
-**Date:** Nov 15, 2025
+**Date:** Nov 15, 2026
 
 Correct?"
 

@@ -1,41 +1,54 @@
-# 🤖 ApprovalFlow AI
+<table>
+  <tr>
+    <td width="200">
+      <img src="public/Enterprise AI Approval Workflow Logo.png" alt="ApprovalFlow AI" width="200" />
+    </td>
+    <td valign="middle">
+      <h1>ApprovalFlow AI</h1>
+      <blockquote>
+        <strong>🚀 <a href="https://approvalflow-ai.ra-kuppasundarar.workers.dev/">Try the Live Demo</a></strong> | Login with the quick demo options to test PTO requests &amp; expense reimbursement
+      </blockquote>
+    </td>
+  </tr>
+</table>
 
-> **🚀 [Try the Live Demo](https://approvalflow-ai.ra-kuppasundarar.workers.dev/)** | Login with using the quick demo options to test PTO requests & expense reimbursement
+## Your company's instant HR — get PTOs approved & expenses reimbursed in seconds, all in natural language
 
-## Your company's Instant HR - Get your PTOs approved & expenses reimbursed in seconds 🚀 all in natural language
-
-Built using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents).
+Built on Cloudflare's agent platform using the [`agents`](https://www.npmjs.com/package/agents) SDK.
 
 ## What is ApprovalFlow AI?
 
-**ApprovalFlow AI** is your company's instant HR assistant that lives in a chat window. Instead of filling out boring forms and waiting days for approval, just tell the AI "I need time off next week" or "I want to submit this lunch receipt," and it handles everything automatically—checking your balance, validating company policies, and approving requests in seconds.
+**ApprovalFlow AI** is your company's instant HR assistant that lives in a chat window. Instead of filling out forms and waiting days for approval, just say "I need time off next week" or "I want to submit this lunch receipt" — and the AI handles everything automatically. It checks your balance, validates company policies, and approves requests in seconds.
 
-Behind the scenes, it's powered by Cloudflare's AI infrastructure and uses intelligent agents that understand natural language, process receipts with computer vision, and follow your company's rulebook to the letter. Whether you're a junior employee requesting 3 days off or a senior manager expensing a client dinner, the AI knows the rules, checks your eligibility, and either approves you instantly or escalates to your manager when needed. No more email chains, no more waiting—just chat and go.
+Behind the scenes it orchestrates 15 specialized tools, processes receipts with computer vision, and follows your company's rulebook to the letter. Whether you're a junior engineer requesting 3 days off or a senior manager expensing a client dinner, the AI knows the rules, checks eligibility, and either approves instantly or escalates to your manager. No email chains. No waiting. Just chat and go.
 
 ## Features
 
-- 💬 Interactive chat interface with AI agent
-- 🌴 Agentic workflow to automatically approve, deny or escalate PTO requests[feature coming soon] in accordance with company policies
-- 🧾 Agentic workflow to reimburse expenses with receipt OCR processing (Workers AI Vision)
-- 🛠️ 15 specialized tools with automatic context injection and human-in-the-loop confirmations
-- 🌓 Dark/Light theme support with localStorage persistence
-- ⚡️ Real-time streaming responses via WebSocket (Durable Objects)
-- 🔄 State management with Durable Object SQLite + D1 relational database
-- 🔐 Secure authentication with PBKDF2 password hashing and HTTP-only session cookies
+- 💬 **Conversational AI** — natural language interface with real-time streaming responses via WebSocket
+- 🌴 **PTO Workflow** — auto-approve, deny, or escalate requests based on company policies and employee level
+- 🧾 **Expense Reimbursement** — receipt OCR processing with Workers AI Vision, policy validation, and instant approval
+- 🛠️ **15 Specialized Tools** — automatic context injection, privacy-enforced data access, and human-in-the-loop confirmations
+- 🔒 **Privacy Enforcement** — tool-level guards ensure users can only access their own data; `employee_id` overrides are rejected server-side regardless of what the LLM passes
+- 📊 **Observability** — Workers automatic tracing (OTel), agents SDK diagnostics, and AI Gateway logging for every model call
+- 🌓 **Dark/Light theme** — persisted via localStorage
+- ⚡ **Real-time streaming** — Durable Object WebSocket with incremental tool-call updates in the UI
+- 🔐 **Secure auth** — PBKDF2 password hashing, HTTP-only session cookies
 
-## Demo videos
+## Demo Videos
 
-### Video demo of Taking time off workflow & employee handbook Q&A with our chatbot
+### PTO workflow & employee handbook Q&A
 
 https://github.com/user-attachments/assets/08cdad5b-6fdd-42cc-9906-7f8f197fada8
 
-### Video demo of our agent recovering from a failure in one of the tool calls and completing the workflow [Rejecting the timeoff request because of company policy]
+### Agent recovering from a tool failure and completing the workflow (policy rejection)
 
 https://github.com/user-attachments/assets/d2e0aa7f-6b32-495e-aaef-f503ebc58521
 
-### Video demo of submitting reimbursement
+### Submitting an expense reimbursement
 
 https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
+
+---
 
 ## For Recruiters & Hiring Managers
 
@@ -44,13 +57,13 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 ### Quick Start (< 2 minutes)
 
 1. **Login** with any test account:
-   - `ramya_junior` / `Password123!` (junior engineer, 3-day auto-approval limit, $100 expense limit)
-   - `ramya_senior` / `Password123!` (senior engineer, 10-day auto-approval limit, $500 expense limit)
-   - `ramya_manager` / `Password123!` (manager, reviews escalated requests)
+   - `ramya_junior` / `Password123!` — junior engineer, 3-day PTO auto-approval, $100 expense limit
+   - `ramya_senior` / `Password123!` — senior engineer, 10-day PTO auto-approval, $500 expense limit
+   - `ramya_manager` / `Password123!` — manager, reviews escalated requests
 
-2. **Try these commands** to see the AI in action:
+2. **Try these prompts**:
 
-   **PTO Requests**:
+   **PTO Requests**
 
    ```
    "I need PTO from December 23-27"
@@ -58,57 +71,60 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
    "Can I take 15 days off in March?"
    ```
 
-   **Expense Reimbursement**:
+   **Expense Reimbursement**
 
    ```
    "I want to submit an expense"
    "I need to get reimbursed for a client dinner"
    ```
 
-   Then upload a receipt image—the AI extracts merchant, amount, date, and line items using computer vision, validates against company policies, and approves instantly or escalates to your manager.
+   Upload a receipt image — the AI extracts merchant, amount, date, and line items using computer vision, validates against company policies, and approves instantly or escalates.
 
-3. **Watch the AI work**: You'll see real-time tool invocations as it checks your balance, validates policies, calculates business days, processes receipt OCR, and makes approval decisions—all in seconds.
+3. **Watch the AI work** — see real-time tool invocations as it checks balances, validates policies, processes receipt OCR, and makes approval decisions, all in seconds.
 
 ### What Makes This Noteworthy
 
-**Core Technologies**:
+**Core Technologies**
 
-- ✅ **Llama 3.3 70B on Workers AI** - Main chat model (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` for function calling)
-- ✅ **Durable Objects** - Stateful chat sessions with SQLite persistence via Agents SDK
-- ✅ **Workers AI Vision** - OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
-- ✅ **D1 Database** - Relational data for users, PTO balances, expenses, audit logs
-- ✅ **Real-time Streaming** - Tool invocations stream to UI as they execute
-- ✅ **Production-ready Auth** - PBKDF2 password hashing, HTTP-only session cookies
+- ✅ **Llama 3.3 70B on Workers AI** — main chat model (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)
+- ✅ **Durable Objects** — stateful chat sessions with SQLite persistence via Agents SDK
+- ✅ **Workers AI Vision** — OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
+- ✅ **D1 Database** — relational data for users, PTO balances, expenses, audit logs
+- ✅ **AI Gateway** — per-request LLM observability: token counts, latency, prompt/response logs, and response caching across all three models
+- ✅ **Workers OTel Tracing** — automatic end-to-end traces for every D1 query, Durable Object call, and Workers AI invocation
+- ✅ **Real-time Streaming** — tool invocations stream to the UI as they execute
+- ✅ **Production-ready Auth** — PBKDF2 password hashing, HTTP-only session cookies
 
-**Technical Highlights**:
+**Technical Highlights**
 
-- **ReAct Agent Framework** - Custom implementation with iterative tool-calling loop ([src/react-agent.ts](src/react-agent.ts))
-- **15 Intelligent Tools** - From `get_pto_balance` to `validate_expense_policy`, all with automatic context handling
-- **Policy Enforcement** - AI reads employee handbook and enforces complex rules (blackout periods, daily limits, receipt requirements)
-- **Computer Vision** - Extracts merchant, amount, date, and line items from receipt images using Workers AI Vision (`@cf/llava-hf/llava-1.5-7b-hf`)
-- **Human-in-the-Loop** - Manager escalation for requests exceeding auto-approval thresholds
+- **ReAct Agent Framework** — custom iterative tool-calling loop ([src/react-agent.ts](src/react-agent.ts))
+- **Privacy-enforced Tools** — `employee_id` is stripped from all tool schemas; every tool resolves identity from the authenticated session only, making it impossible for the LLM to access another user's data
+- **Policy Enforcement** — AI reads the employee handbook dynamically; updating policies requires only editing a markdown file, no retraining
+- **Computer Vision** — extracts merchant, amount, date, and line items from receipt images using Workers AI Vision
+- **Human-in-the-Loop** — manager escalation for requests exceeding auto-approval thresholds
+- **Agents SDK Observability** — structured diagnostics for every RPC call, state change, and message lifecycle event
 
-**Why It Works**:
-This isn't a chatbot wrapper around an LLM. It's a multi-agent system that orchestrates 15+ tools, database queries, policy validations, and business logic—all while maintaining conversational context. The AI doesn't hallucinate approvals; it executes deterministic workflows based on real company data.
+---
 
 ## For Engineers
 
 ### Architecture Overview
 
-ApprovalFlow AI is built on a **ReAct (Reasoning + Acting) agent framework** that coordinates multiple AI models, tools, and data sources. See the full [Architecture Documentation](docs/ARCHITECTURE.md) for detailed diagrams and flows.
+**Core Stack**
 
-**Core Stack**:
-
-- **Agent Runtime**: [`agents`](https://www.npmjs.com/package/agents) SDK (v0.2.20) with Durable Objects for state persistence
-- **LLM Orchestration**: Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) using Vercel AI SDK
-- **Models**: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, chat), Llama 3.1 8B (handbook search), LLaVA 1.5 7B (OCR)
-- **State**: Durable Object SQLite (chat history) + D1 (relational data)
-- **Frontend**: React 19 + Vite with `useAgent` hook from `agents/react`
-- **Router**: Hono v4.10.6 with CORS middleware
+| Layer             | Technology                                                                        |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Agent Runtime     | [`agents`](https://www.npmjs.com/package/agents) SDK v0.2.20 + Durable Objects    |
+| LLM Orchestration | Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) via Vercel AI SDK |
+| Chat Model        | Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)                        |
+| Vision / OCR      | LLaVA 1.5 7B (`@cf/llava-hf/llava-1.5-7b-hf`)                                     |
+| Handbook Search   | Llama 3.1 8B (`@cf/meta/llama-3.1-8b-instruct`)                                   |
+| State             | Durable Object SQLite (chat history) + D1 (relational data)                       |
+| Frontend          | React 19 + Vite with `useAgent` hook from `agents/react`                          |
+| Router            | Hono v4 with session middleware                                                   |
+| Observability     | Workers OTel tracing + AI Gateway + Agents SDK diagnostics + Tail Worker          |
 
 ### How the ReAct Agent Works
-
-The agent doesn't just chat—it **thinks, acts, and verifies** in a loop:
 
 1. **User Input** → LLM parses intent and decides which tools to call
 2. **Tool Execution** → Queries D1, validates policies, calculates business days
@@ -116,16 +132,16 @@ The agent doesn't just chat—it **thinks, acts, and verifies** in a loop:
 4. **Iteration** → Repeats up to 15 times until all required information is gathered
 5. **Response** → Synthesizes final answer with approval/denial/escalation
 
-**Key Implementation Details**:
+**Key Implementation Details**
 
-- **Manual Tool Calling**: Workers AI requires custom tool parsing, so we implement a `TOOL_CALL: tool_name` / `PARAMETERS: {...}` pattern with regex-based extraction ([see prompts.ts](src/prompts.ts))
-- **Streaming Tool Updates**: Tool invocations stream to the UI in real-time via WebSocket callbacks ([server.ts:254-314](src/server.ts#L254-L314))
-- **Context Window Management**: Conversation history limited to last 4 messages to fit within model limits ([react-agent.ts](src/react-agent.ts))
-- **Model Selection**: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) is currently used for function calling
+- **Manual Tool Calling** — Workers AI requires custom tool parsing; implemented as a `TOOL_CALL: tool_name` / `PARAMETERS: {...}` pattern with regex-based extraction ([src/prompts.ts](src/prompts.ts))
+- **Streaming Tool Updates** — invocations stream to the UI in real-time via WebSocket callbacks
+- **Context Window Management** — conversation history limited to last 4 messages to fit within model limits
+- **Output Token Cap** — `maxOutputTokens: 1024` on every `generateText` call prevents mid-sentence cutoffs
 
 ### Tool System Design
 
-All 15 tools follow a consistent interface defined in [`src/tools.ts`](src/tools.ts):
+All 15 tools follow a consistent interface in [`src/tools.ts`](src/tools.ts):
 
 ```typescript
 interface Tool {
@@ -139,13 +155,13 @@ interface Tool {
 }
 ```
 
-**Tool Context Injection**: Every tool receives `{ env: Env, userId: string }` automatically—no need to pass employee IDs explicitly. The authenticated user ID flows from:
+**Privacy-enforced Context Injection** — every tool receives `{ env: Env, userId: string }` from the authenticated session. The `employee_id` parameter has been removed from all tool schemas so the LLM cannot override the authenticated identity. The user ID flows from:
 
-1. Login → Session cookie → D1 sessions table
-2. Middleware extracts session → Validates user → Injects `X-User-Id` header
-3. Durable Object persists userId in storage → Tools access via context
+1. Login → session cookie → D1 `sessions` table
+2. Middleware validates session → injects `X-User-Id` header
+3. Durable Object persists `userId` in storage → all tools use `context.userId`
 
-**Example Tool Chain** (PTO Request):
+**PTO Tool Chain**
 
 ```
 get_current_user()
@@ -155,106 +171,150 @@ get_current_user()
   → submit_pto_request(status)
 ```
 
-See [Features Map](docs/features/features_map.md) for user journeys and [Test Scenarios](docs/TEST_SCENARIOS.md) for behavior validation.
+**Expense Tool Chain**
 
-### Policy Enforcement
+```
+show_expense_dialog()
+  → get_current_user()
+  → validate_expense_policy(amount, category, has_receipt)
+  → submit_expense_request(status)
+```
 
-The AI doesn't memorize rules—it **reads the employee handbook dynamically**:
+### Observability & Monitoring
+
+Three complementary layers run in production:
+
+**1. Workers Automatic Tracing** ([wrangler.jsonc](wrangler.jsonc))
+
+```jsonc
+"observability": {
+  "traces": { "enabled": true, "head_sampling_rate": 1 }
+}
+```
+
+Zero-code OTel traces for every D1 query, Durable Object invocation, and Workers AI call. Export to Honeycomb, Grafana, or Axiom by adding a destination in the Workers dashboard.
+
+**2. Agents SDK Diagnostics** ([src/server.ts](src/server.ts))
 
 ```typescript
-// Tool: search_employee_handbook
-const prompt = getHandbookSearchPrompt(handbookContent, query);
-const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-  messages: [{ role: "user", content: prompt }]
+override observability: Observability = {
+  emit(event) {
+    const isError = event.type.endsWith(":error");
+    const entry = JSON.stringify({ src: "agent-sdk", evt: event.type, event });
+    isError ? console.error(entry) : console.log(entry);
+  }
+};
+```
+
+Structured JSON logs for every RPC call, state change, chat message, and WebSocket lifecycle event.
+
+**3. AI Gateway** ([src/react-agent.ts](src/react-agent.ts))
+
+```typescript
+const workersai = createWorkersAI({
+  binding: context.env.AI,
+  gateway: { id: "approvalflow-ai", skipCache: false, cacheTtl: 3600 }
 });
 ```
 
-This means updating company policies is as simple as editing [`docs/handbook/employee_handbook.md`](docs/handbook/employee_handbook.md). No retraining required.
+Per-request token counts, latency, and prompt/response logs for all LLM calls. Response caching reduces cost for repeated queries. View logs at `dash.cloudflare.com → AI → AI Gateway`.
 
-**Policy Validation Flow**:
+**4. Tail Worker** ([src/tail.ts](src/tail.ts))
+Captures all diagnostics channel events, worker logs, and unhandled exceptions in production. Deploy separately with `wrangler deploy --config wrangler.tail.jsonc`, then uncomment `tail_consumers` in [wrangler.jsonc](wrangler.jsonc).
 
-- PTO: Checks balance → blackout periods → auto-approval limits (3 days junior, 10 days senior)
-- Expenses: Validates receipt requirement (>$75) → daily limits ($75 meals) → non-reimbursable items → auto-approval thresholds ($100 junior, $500 senior)
+### Policy Enforcement
+
+The AI reads the employee handbook dynamically rather than hardcoding rules:
+
+```typescript
+const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+  messages: [
+    { role: "user", content: getHandbookSearchPrompt(handbookContent, query) }
+  ]
+});
+```
+
+Updating company policies requires only editing [`docs/handbook/employee_handbook.md`](docs/handbook/employee_handbook.md). No retraining needed.
+
+- **PTO**: balance check → blackout period conflicts → auto-approval threshold (3 days junior, 10 days senior)
+- **Expenses**: receipt requirement (>$75) → daily limits → non-reimbursable item check → auto-approval threshold ($100 junior, $500 senior)
 
 ### Computer Vision Pipeline
 
-Receipt OCR uses Workers AI Vision with structured output extraction:
-
-1. User uploads image → Stored as base64 in D1 `receipt_uploads` table
-2. AI processes with prompt: _"Extract amount, merchant, date, items as JSON"_
-3. Validates JSON structure → Stores in `extracted_data` column
-4. Agent uses extracted data for `validate_expense_policy` tool
-
-**Model**: `@cf/llava-hf/llava-1.5-7b-hf` ([receipt processing code](src/server.ts#L976-L1044))
+1. User uploads receipt → stored as base64 in D1 `receipt_uploads` table
+2. `@cf/llava-hf/llava-1.5-7b-hf` extracts amount, merchant, date, and line items as structured JSON
+3. Extracted data stored in `extracted_data` column and passed to `validate_expense_policy`
 
 ### Running Locally
 
 ```bash
-# Install dependencies
 npm install
-
-# Start dev server (Vite + Wrangler)
-npm run start
-
-# Deploy to Cloudflare
-npm run deploy
-
-# Run migrations
-npm run d1:apply
+npm start            # Vite + Wrangler dev server
+npm run deploy       # Build and deploy to Cloudflare
+npm run d1:apply     # Apply pending D1 migrations
+npm run check        # Prettier + Biome lint + TypeScript
+npm test             # Run tests with Vitest
 ```
 
-**Environment Setup**:
+**Environment Setup**
 
-- D1 database configured in `wrangler.jsonc` (database_id: `a09cdc9d-ad17-4a8c-afea-417c4107a098`)
-- Demo users seeded via `migrations/0001_create_auth_tables.sql`
-- No external API keys required (Workers AI runs on Cloudflare's platform)
-- Durable Object migration configured with `new_sqlite_classes: ["Chat"]`
+- D1 database configured in `wrangler.jsonc`
+- Demo users seeded via `migrations/0001_create_auth_tables.sql` (password: `Password123!`)
+- No external API keys required — all inference runs on Workers AI
+- AI Gateway: create at `dash.cloudflare.com → AI → AI Gateway`, set the gateway ID in [src/react-agent.ts](src/react-agent.ts)
 
 ### Code Navigation
 
-- **Agent Entry Point**: [src/server.ts](src/server.ts) - `Chat` class extends `AIChatAgent` (lines 76-421)
-- **ReAct Loop**: [src/react-agent.ts](src/react-agent.ts) - `runReActAgent()` function (324 lines)
-- **System Prompts**: [src/prompts.ts](src/prompts.ts) - Includes tool descriptions and behavior rules
-- **Tool Implementations**: [src/tools.ts](src/tools.ts) - All 15 tools with execute functions (1,481 lines)
-- **Frontend Agent Hooks**: [src/app.tsx](src/app.tsx) - `useAgent` hook from `agents/react` (649 lines)
-- **Database Schema**: [migrations/](migrations/) - 8 D1 migration files
-- **Architecture Documentation**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Comprehensive architecture diagrams and flows
+| File                                                                     | Purpose                                                                                  |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [src/server.ts](src/server.ts)                                           | `Chat` Durable Object — session handling, agents SDK observability override, Hono routes |
+| [src/react-agent.ts](src/react-agent.ts)                                 | `runReActAgent()` — ReAct loop, tool parsing, AI Gateway config                          |
+| [src/prompts.ts](src/prompts.ts)                                         | System prompt — tool descriptions, privacy rules, capability examples                    |
+| [src/tools.ts](src/tools.ts)                                             | All 15 tools with privacy-enforced execute functions                                     |
+| [src/tail.ts](src/tail.ts)                                               | Tail Worker — production log forwarding (deploy separately)                              |
+| [src/app.tsx](src/app.tsx)                                               | React chat UI with `useAgent` and `useAgentChat` hooks                                   |
+| [migrations/](migrations/)                                               | D1 migration files                                                                       |
+| [docs/handbook/employee_handbook.md](docs/handbook/employee_handbook.md) | Company policies — edit to update rules without redeployment                             |
+| [wrangler.jsonc](wrangler.jsonc)                                         | Workers config — AI binding, D1, Durable Objects, OTel tracing                           |
+| [wrangler.tail.jsonc](wrangler.tail.jsonc)                               | Tail Worker deployment config                                                            |
+
+### Database Schema
+
+| Table              | Purpose                                        |
+| ------------------ | ---------------------------------------------- |
+| `users`            | Employee profiles (level, manager, department) |
+| `sessions`         | Auth sessions with expiry                      |
+| `pto_requests`     | PTO request records with approval workflow     |
+| `pto_balances`     | Accrual and usage tracking                     |
+| `company_calendar` | Holidays and blackout periods                  |
+| `expense_requests` | Expense reimbursement workflow                 |
+| `receipt_uploads`  | Base64 receipt images + OCR extracted data     |
+| `audit_log`        | Compliance event tracking                      |
 
 ### Why This Architecture?
 
-**Durable Objects for Chat State**: Each user gets their own isolated Durable Object instance that persists conversation history in embedded SQLite. This means:
+**Durable Objects for Chat State** — each user gets an isolated DO instance with embedded SQLite. No cold-start penalty for reconstructing context, strong consistency for multi-turn conversations, automatic WebSocket management.
 
-- No cold start penalty for reconstructing context
-- Strong consistency for multi-turn conversations
-- Automatic WebSocket connection management
+**D1 for Application Data** — relational queries, complex JOINs, and ACID transactions for balance updates and audit logs.
 
-**D1 for Application Data**: Relational queries are better suited for D1:
+**Workers AI for Inference** — all models run on Cloudflare's edge network. Zero external API dependencies, sub-second latency for tool-calling loops.
 
-- Complex JOINs (e.g., `receipt_uploads` ↔ `expense_requests` ↔ `users`)
-- ACID transactions for balance updates
-- Audit log compliance
-
-**Workers AI for Inference**: All models run on Cloudflare's edge network:
-
-- Zero external API dependencies
-- Sub-second latency for tool-calling loops
-- Cost-effective at scale (no per-token charges to external providers)
+**AI Gateway as LLM Control Plane** — unified observability across all three models (Llama 3.3 70B, LLaVA, Whisper) through a single binding config change. Adds caching, rate limiting, and per-request logging with no code changes.
 
 ### Contributing & Extending
 
-**Adding a New Tool**:
+**Adding a New Tool**
 
 1. Define in `src/tools.ts` with `name`, `description`, `parameters`, `execute`
-2. Add to `tools` export object
-3. Update system prompt in `src/prompts.ts` to explain when to use it
-4. Test with [test scenarios](docs/TEST_SCENARIOS.md)
+2. Never accept `employee_id` as a parameter — always use `context.userId`
+3. Add to the `tools` export object
+4. Update `src/prompts.ts` to describe when to use the tool
 
-**Modifying Policies**:
+**Modifying Policies**
 
 - Edit `docs/handbook/employee_handbook.md`
-- Agent automatically queries updated policies via `search_employee_handbook` tool
+- The agent queries updated policies automatically via `search_employee_handbook`
 
-**Changing Models**:
+**Changing Models**
 
-- ⚠️ **CRITICAL**: Do NOT change the model without comprehensive testing
-- Current model: Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)
+- ⚠️ Do not change `@cf/meta/llama-3.3-70b-instruct-fp8-fast` without comprehensive testing — other models have different function-calling behavior with the custom ReAct parser

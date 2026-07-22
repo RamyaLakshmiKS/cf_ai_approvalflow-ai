@@ -49,7 +49,7 @@ User: "I need some time off"
 
 ```
 {
-  "response": "I'd be happy to help! To process your PTO request, I need a few details:\n- What dates are you requesting off? (e.g., November 18-20, 2025)\n- What's the reason? (optional but helpful)\n\nPlease provide the dates and I'll check your balance and policy limits.",
+  "response": "I'd be happy to help! To process your PTO request, I need a few details:\n- What dates are you requesting off? (e.g., November 18-20, 2026)\n- What's the reason? (optional but helpful)\n\nPlease provide the dates and I'll check your balance and policy limits.",
   "steps": []
 }
 ```
@@ -65,7 +65,7 @@ None (0 tools called)
 ### Input
 
 ```
-User: "I need PTO from December 1-5, 2025 for a holiday vacation"
+User: "I need PTO from December 1-5, 2026 for a holiday vacation"
 ```
 
 ### Expected Behavior
@@ -84,7 +84,7 @@ User: "I need PTO from December 1-5, 2025 for a holiday vacation"
 
 ```
 {
-  "response": "Your PTO request for December 1-5, 2025 (5 business days) has been successfully submitted. Since this exceeds the auto-approval limit for your level, it has been escalated to your manager for review. You should expect a response within 1-2 business days.",
+  "response": "Your PTO request for December 1-5, 2026 (5 business days) has been successfully submitted. Since this exceeds the auto-approval limit for your level, it has been escalated to your manager for review. You should expect a response within 1-2 business days.",
   "steps": [
     { iteration: 0, action: "get_current_user", ... },
     { iteration: 1, action: "calculate_business_days", ... },
@@ -156,7 +156,7 @@ User: "I need PTO next week"
 
 ```
 {
-  "response": "I'd be happy to help you request PTO for next week! However, I need the specific dates to process your request. Could you please provide:\n- Start date (e.g., November 18, 2025)\n- End date (e.g., November 22, 2025)\n\nOnce I have the exact dates, I can check your balance, validate against company policies, and submit your request.",
+  "response": "I'd be happy to help you request PTO for next week! However, I need the specific dates to process your request. Could you please provide:\n- Start date (e.g., November 18, 2026)\n- End date (e.g., November 22, 2026)\n\nOnce I have the exact dates, I can check your balance, validate against company policies, and submit your request.",
   "steps": []
 }
 ```

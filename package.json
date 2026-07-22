@@ -11,6 +11,7 @@
 		"d1:apply": "bash ./scripts/d1/apply_migrations.sh",
 		"d1:setup": "bash ./scripts/d1/deploy_and_seed.sh",
 		"test": "vitest",
+		"eval": "vitest --config vitest.evals.config.ts",
 		"types": "wrangler types env.d.ts --include-runtime false",
 		"format": "prettier --write .",
 		"check": "prettier . --check && biome lint && tsc"
