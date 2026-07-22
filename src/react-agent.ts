@@ -64,12 +64,12 @@ export async function runReActAgent(
   }> = [];
 
   // Create Workers AI instance
-  const workersai = createWorkersAI({ 
+  const workersai = createWorkersAI({
     binding: context.env.AI,
     gateway: {
       id: "approvalflow-ai",
       skipCache: false,
-      cacheTtl: 3600,
+      cacheTtl: 3600
     }
   });
   // Use explicit model identifier. Types for the provider's model union are not exported,

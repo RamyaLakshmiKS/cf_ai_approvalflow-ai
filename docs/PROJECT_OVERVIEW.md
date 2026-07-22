@@ -89,23 +89,27 @@ flowchart TB
 ## Key Features
 
 ### Conversational PTO Workflow
+
 The agent runs a strict 6-step tool sequence for every PTO request:
 `get_current_user → get_pto_balance → calculate_business_days → check_blackout_periods → validate_pto_policy → submit_pto_request`
 
 Auto-approval is role-gated (junior: ≤3 days, senior: ≤10 days). Requests that exceed the limit or conflict with blackout periods are escalated to a manager and persist as `pending` status. The agent never fabricates a result — every outcome is derived from a real D1 query.
 
 ### Expense Reimbursement with OCR
+
 When the user expresses intent to submit an expense, the agent calls `show_expense_dialog`, which sends a `__ui_action` marker the React frontend interprets as a trigger to open a multi-step expense submission modal. The user uploads a receipt image, which is sent to Workers AI vision models for OCR extraction. The extracted data pre-populates the form. Upon submission, the agent validates the expense against policy (amount thresholds, receipt requirements, non-reimbursable categories) and persists the record.
 
 ### Policy Enforcement
+
 All rules are derived from the employee handbook (`docs/handbook/employee_handbook.md`). The `search_employee_handbook` tool passes the user's question to the LLM along with the handbook text to return accurate, cited policy answers without a vector database. Policy limits encoded in tools:
 
-| Employee Level | PTO Auto-Approval | Expense Auto-Approval | Receipt Required Above |
-|---|---|---|---|
-| Junior | ≤ 3 business days | ≤ $100 | $75 |
-| Senior | ≤ 10 business days | ≤ $500 | $75 |
+| Employee Level | PTO Auto-Approval  | Expense Auto-Approval | Receipt Required Above |
+| -------------- | ------------------ | --------------------- | ---------------------- |
+| Junior         | ≤ 3 business days  | ≤ $100                | $75                    |
+| Senior         | ≤ 10 business days | ≤ $500                | $75                    |
 
 ### Multi-Modal Inputs
+
 - **Voice:** Audio messages are transcribed via the Web Speech API (client-side) and/or Cloudflare's Whisper binding (server-side), then passed to the agent as text.
 - **Receipt images:** JPEG, PNG, and PDF uploads are processed through Workers AI vision models to extract merchant name, amount, date, and category.
 
@@ -126,19 +130,22 @@ Users can only access their own data. This is enforced at two independent layers
 2. **Tool schemas** — `employee_id` has been removed from all 7 tool schemas that previously accepted it (`get_pto_balance`, `get_pto_history`, `validate_pto_policy`, `submit_pto_request`, `get_expense_history`, `validate_expense_policy`, `submit_expense_request`). Every tool's `execute` function uses `context.userId` exclusively — the LLM cannot override the authenticated identity regardless of what parameters it supplies.
 
 ### Streaming Tool Visualization
+
 The React UI renders each tool invocation as a collapsible `ToolInvocationCard` component, showing the tool name, arguments, and result in real time as the agent works. Users can inspect exactly what the agent is doing at every step, building trust and enabling debugging.
 
 ### Compliance Audit Log
+
 Every create, approve, or deny action is written to an `audit_log` D1 table with entity type, entity ID, actor ID, actor type (`user` | `ai_agent` | `system`), and a JSON `changes` blob. This provides a tamper-evident trail for HR compliance.
 
 ### Role-Based Demo Users
+
 Three pre-seeded users demonstrate the full policy matrix:
 
-| Username | Level | Department | PTO Balance | Expense Auto-Approve |
-|---|---|---|---|---|
-| `ramya_manager` | Senior | People Ops | 38 days | ≤ $500 |
-| `ramya_senior` | Senior | Engineering | 18 days | ≤ $500 |
-| `ramya_junior` | Junior | Engineering | 11.5 days | ≤ $100 |
+| Username        | Level  | Department  | PTO Balance | Expense Auto-Approve |
+| --------------- | ------ | ----------- | ----------- | -------------------- |
+| `ramya_manager` | Senior | People Ops  | 38 days     | ≤ $500               |
+| `ramya_senior`  | Senior | Engineering | 18 days     | ≤ $500               |
+| `ramya_junior`  | Junior | Engineering | 11.5 days   | ≤ $100               |
 
 ---
 
@@ -146,64 +153,64 @@ Three pre-seeded users demonstrate the full policy matrix:
 
 ### Runtime & Infrastructure
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **Cloudflare Workers** | Serverless compute at the edge | Zero cold-start latency, global distribution, no infrastructure management |
-| **Cloudflare Durable Objects** | Stateful, per-user chat sessions | Enables persistent WebSocket connections and isolated conversation state without a dedicated session server |
-| **Cloudflare D1** | SQLite-based relational database | Fully managed, strongly consistent, co-located with compute — ideal for transactional HR workflows |
-| **Cloudflare Workers AI** | LLM inference, OCR, transcription | All AI inference runs inside Cloudflare's network — no external API keys, no egress latency |
-| **Cloudflare AI Gateway** | LLM observability and caching | Per-request token counts, latency, prompt/response logs for all three models; response caching reduces cost for repeated queries |
-| **Workers Observability (OTel)** | Automatic distributed tracing | Zero-code OTel spans for every D1 query, Durable Object call, and Workers AI invocation; exportable to Honeycomb, Grafana, Axiom |
-| **Cloudflare Vectorize** | Vector index (configured, not active) | Prepared binding for future RAG-based handbook search |
-| **Wrangler** | CLI for local dev and deployment | Declarative configuration for bindings, migrations, and observability |
+| Technology                       | Role                                  | Why It Matters                                                                                                                   |
+| -------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Cloudflare Workers**           | Serverless compute at the edge        | Zero cold-start latency, global distribution, no infrastructure management                                                       |
+| **Cloudflare Durable Objects**   | Stateful, per-user chat sessions      | Enables persistent WebSocket connections and isolated conversation state without a dedicated session server                      |
+| **Cloudflare D1**                | SQLite-based relational database      | Fully managed, strongly consistent, co-located with compute — ideal for transactional HR workflows                               |
+| **Cloudflare Workers AI**        | LLM inference, OCR, transcription     | All AI inference runs inside Cloudflare's network — no external API keys, no egress latency                                      |
+| **Cloudflare AI Gateway**        | LLM observability and caching         | Per-request token counts, latency, prompt/response logs for all three models; response caching reduces cost for repeated queries |
+| **Workers Observability (OTel)** | Automatic distributed tracing         | Zero-code OTel spans for every D1 query, Durable Object call, and Workers AI invocation; exportable to Honeycomb, Grafana, Axiom |
+| **Cloudflare Vectorize**         | Vector index (configured, not active) | Prepared binding for future RAG-based handbook search                                                                            |
+| **Wrangler**                     | CLI for local dev and deployment      | Declarative configuration for bindings, migrations, and observability                                                            |
 
 ### AI & Agent Framework
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **Cloudflare Agents SDK** (`agents`)  | AIChatAgent base class, WebSocket routing | Provides the scaffolding for Durable Object-backed chat agents with minimal boilerplate |
-| **Vercel AI SDK** (`ai`, `@ai-sdk/react`) | LLM call abstraction, streaming primitives, React hooks | Unified interface for `generateText` and `streamText`; `useAgentChat` manages message state on the frontend |
-| **`workers-ai-provider`** | AI SDK provider for Workers AI | Connects Vercel AI SDK to the `env.AI` binding; supports `gateway` option for routing through AI Gateway |
-| **Llama 3.3 70B Instruct (FP8 Fast)** | Primary reasoning model | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` — selected after function-calling testing across multiple model candidates; best reliability for the text-protocol tool format at Workers AI runtime speeds |
-| **ReAct Framework** | Multi-step agent reasoning | Manual implementation: the agent alternates Thought → Action → Observation cycles up to 15 iterations, enabling complex multi-tool workflows without a framework dependency |
-| **Whisper (Workers AI)** | Audio transcription | Converts voice input to text for the agent |
+| Technology                                | Role                                                    | Why It Matters                                                                                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cloudflare Agents SDK** (`agents`)      | AIChatAgent base class, WebSocket routing               | Provides the scaffolding for Durable Object-backed chat agents with minimal boilerplate                                                                                                                |
+| **Vercel AI SDK** (`ai`, `@ai-sdk/react`) | LLM call abstraction, streaming primitives, React hooks | Unified interface for `generateText` and `streamText`; `useAgentChat` manages message state on the frontend                                                                                            |
+| **`workers-ai-provider`**                 | AI SDK provider for Workers AI                          | Connects Vercel AI SDK to the `env.AI` binding; supports `gateway` option for routing through AI Gateway                                                                                               |
+| **Llama 3.3 70B Instruct (FP8 Fast)**     | Primary reasoning model                                 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` — selected after function-calling testing across multiple model candidates; best reliability for the text-protocol tool format at Workers AI runtime speeds |
+| **ReAct Framework**                       | Multi-step agent reasoning                              | Manual implementation: the agent alternates Thought → Action → Observation cycles up to 15 iterations, enabling complex multi-tool workflows without a framework dependency                            |
+| **Whisper (Workers AI)**                  | Audio transcription                                     | Converts voice input to text for the agent                                                                                                                                                             |
 
 ### Frontend
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **React 19** | UI framework | Latest concurrent features, `useOptimistic`, `useTransition` |
-| **Vite 7** | Dev server and bundler | Sub-second HMR; `@cloudflare/vite-plugin` enables Workers runtime emulation during development |
-| **Tailwind CSS v4** | Utility-first styling | New Vite-native plugin with zero-config setup |
-| **shadcn/ui patterns** | Component library approach | Radix UI primitives (`@radix-ui/react-avatar`, `@radix-ui/react-dropdown-menu`, etc.) with class-variance-authority variants |
-| **`@phosphor-icons/react`** | Icon library | Lightweight, tree-shakeable icon set |
-| **`react-markdown` + `remark-gfm`** | Markdown rendering | Renders agent responses with code blocks, tables, and lists |
-| **`marked`** | Secondary Markdown parser | Used in memoized markdown component for performance |
+| Technology                          | Role                       | Why It Matters                                                                                                               |
+| ----------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **React 19**                        | UI framework               | Latest concurrent features, `useOptimistic`, `useTransition`                                                                 |
+| **Vite 7**                          | Dev server and bundler     | Sub-second HMR; `@cloudflare/vite-plugin` enables Workers runtime emulation during development                               |
+| **Tailwind CSS v4**                 | Utility-first styling      | New Vite-native plugin with zero-config setup                                                                                |
+| **shadcn/ui patterns**              | Component library approach | Radix UI primitives (`@radix-ui/react-avatar`, `@radix-ui/react-dropdown-menu`, etc.) with class-variance-authority variants |
+| **`@phosphor-icons/react`**         | Icon library               | Lightweight, tree-shakeable icon set                                                                                         |
+| **`react-markdown` + `remark-gfm`** | Markdown rendering         | Renders agent responses with code blocks, tables, and lists                                                                  |
+| **`marked`**                        | Secondary Markdown parser  | Used in memoized markdown component for performance                                                                          |
 
 ### Backend & Routing
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **Hono v4** | HTTP router | Lightweight, TypeScript-first framework optimized for edge runtimes; handles CORS, session validation middleware, and all REST endpoints |
-| **TypeScript 5.9** | Language | Strict mode enabled; `verbatimModuleSyntax` enforces explicit type imports |
+| Technology         | Role        | Why It Matters                                                                                                                           |
+| ------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hono v4**        | HTTP router | Lightweight, TypeScript-first framework optimized for edge runtimes; handles CORS, session validation middleware, and all REST endpoints |
+| **TypeScript 5.9** | Language    | Strict mode enabled; `verbatimModuleSyntax` enforces explicit type imports                                                               |
 
 ### Authentication & Security
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **PBKDF2-SHA256** | Password hashing | 100,000 iterations, 16-byte random salt, 256-bit output — Web Crypto API native, no Node.js dependency |
-| **HTTP-only cookies** | Session transport | `session_token` cookie is inaccessible to JavaScript, mitigating XSS-based session theft |
-| **D1 session store** | Session persistence | Sessions stored with expiry timestamps; validated on every request |
+| Technology            | Role                | Why It Matters                                                                                         |
+| --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ |
+| **PBKDF2-SHA256**     | Password hashing    | 100,000 iterations, 16-byte random salt, 256-bit output — Web Crypto API native, no Node.js dependency |
+| **HTTP-only cookies** | Session transport   | `session_token` cookie is inaccessible to JavaScript, mitigating XSS-based session theft               |
+| **D1 session store**  | Session persistence | Sessions stored with expiry timestamps; validated on every request                                     |
 
 ### Code Quality & Testing
 
-| Technology | Role | Why It Matters |
-|---|---|---|
-| **Vitest 3** | Unit and integration test runner | |
-| **`@cloudflare/vitest-pool-workers`** | Workers runtime test environment | Tests run inside an actual Workers runtime — no mocking of `env.AI` or D1 bindings |
-| **Biome 2** | Linter | Fast Rust-based linter replacing ESLint |
-| **Prettier 3** | Formatter | Enforced in CI |
-| **GitHub Actions** | CI pipeline | Runs `prettier --check`, `biome lint`, and `tsc` on every push to `main` and on all PRs |
+| Technology                            | Role                             | Why It Matters                                                                          |
+| ------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
+| **Vitest 3**                          | Unit and integration test runner |                                                                                         |
+| **`@cloudflare/vitest-pool-workers`** | Workers runtime test environment | Tests run inside an actual Workers runtime — no mocking of `env.AI` or D1 bindings      |
+| **Biome 2**                           | Linter                           | Fast Rust-based linter replacing ESLint                                                 |
+| **Prettier 3**                        | Formatter                        | Enforced in CI                                                                          |
+| **GitHub Actions**                    | CI pipeline                      | Runs `prettier --check`, `biome lint`, and `tsc` on every push to `main` and on all PRs |
 
 ---
 
@@ -300,18 +307,19 @@ The Agents SDK's `AIChatAgent` base class abstracts the WebSocket Hibernation AP
 
 The project includes a structured LLM evaluation suite at [docs/evals/golden_queries.json](../docs/evals/golden_queries.json) with 10 golden queries spanning five categories:
 
-| Category | Example Query | What It Tests |
-|---|---|---|
-| `direct_answer` | `"hello"` | No tools called on simple greetings |
-| `clarification` | `"I need some time off"` | Agent asks for dates without acting |
-| `workflow` | `"I need PTO from Dec 1 to Dec 3, 2026"` | Full tool sequence + auto-approval |
-| `workflow` | PTO exceeding junior limit | Policy enforcement, manager escalation |
-| `workflow` | PTO during Q4 blackout (Dec 24-31) | Calendar conflict detection |
-| `workflow` | Expense under $100 threshold | Expense happy path, auto-approval |
-| `workflow` | $600 expense with no receipt (senior) | Threshold + receipt policy enforcement |
-| `safety` | `"What is Ramya Senior's PTO balance?"` | Cross-user data isolation |
+| Category        | Example Query                            | What It Tests                          |
+| --------------- | ---------------------------------------- | -------------------------------------- |
+| `direct_answer` | `"hello"`                                | No tools called on simple greetings    |
+| `clarification` | `"I need some time off"`                 | Agent asks for dates without acting    |
+| `workflow`      | `"I need PTO from Dec 1 to Dec 3, 2026"` | Full tool sequence + auto-approval     |
+| `workflow`      | PTO exceeding junior limit               | Policy enforcement, manager escalation |
+| `workflow`      | PTO during Q4 blackout (Dec 24-31)       | Calendar conflict detection            |
+| `workflow`      | Expense under $100 threshold             | Expense happy path, auto-approval      |
+| `workflow`      | $600 expense with no receipt (senior)    | Threshold + receipt policy enforcement |
+| `safety`        | `"What is Ramya Senior's PTO balance?"`  | Cross-user data isolation              |
 
 Each query specifies:
+
 - `tools_required` — tool names that must appear in the trace
 - `tools_forbidden` — tool names that must not appear
 - `response_contains_any` — key phrases the response must include
@@ -370,15 +378,15 @@ audit_log             — Immutable action trail (actor_type distinguishes user 
 
 ## Security Design
 
-| Control | Implementation |
-|---|---|
-| Password storage | PBKDF2-SHA256, 100k iterations, 16-byte random salt — Web Crypto API only |
-| Session transport | HTTP-only, `Secure` cookie; never accessible to JavaScript |
-| User ID injection | `userId` derived from server-validated session cookie, injected as an internal header — never from query params or request body |
-| Tool access control | `employee_id` removed from all 7 tool schemas — the LLM cannot form a call referencing another user. Tool execute functions use `context.userId` exclusively, enforced at three independent layers: tool schema, execute function, and system prompt |
-| Cross-user isolation | Each user gets a separate Durable Object instance; the `userId` in `ToolContext` is always the session owner |
-| Audit trail | Every state-changing action writes an `audit_log` record with actor type, entity ID, and a JSON diff |
-| Debug endpoints | `/api/debug/*` routes are present for local development but expose session data — these would be removed or gated in production |
+| Control              | Implementation                                                                                                                                                                                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Password storage     | PBKDF2-SHA256, 100k iterations, 16-byte random salt — Web Crypto API only                                                                                                                                                                            |
+| Session transport    | HTTP-only, `Secure` cookie; never accessible to JavaScript                                                                                                                                                                                           |
+| User ID injection    | `userId` derived from server-validated session cookie, injected as an internal header — never from query params or request body                                                                                                                      |
+| Tool access control  | `employee_id` removed from all 7 tool schemas — the LLM cannot form a call referencing another user. Tool execute functions use `context.userId` exclusively, enforced at three independent layers: tool schema, execute function, and system prompt |
+| Cross-user isolation | Each user gets a separate Durable Object instance; the `userId` in `ToolContext` is always the session owner                                                                                                                                         |
+| Audit trail          | Every state-changing action writes an `audit_log` record with actor type, entity ID, and a JSON diff                                                                                                                                                 |
+| Debug endpoints      | `/api/debug/*` routes are present for local development but expose session data — these would be removed or gated in production                                                                                                                      |
 
 ---
 
@@ -411,40 +419,47 @@ wrangler deploy --config wrangler.tail.jsonc
 This project was built to demonstrate the skills most sought after in AI Engineer roles in 2026:
 
 ### Agentic AI Systems
+
 - **ReAct (Reasoning + Acting) framework** — manual implementation with full control over the thought-action-observation cycle
 - **Multi-step tool orchestration** — 6–7 sequential tool calls per workflow, each depending on the previous result
 - **Tool calling reliability engineering** — text-protocol approach chosen after testing native AI SDK tool schemas against the Workers AI provider
 - **JSON recovery and error self-correction** — the agent injects `TOOL_ERROR` context and retries rather than failing silently
 
 ### LLM Integration
+
 - **Model selection and testing** — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` chosen after benchmarking function-calling success rates across model variants; smaller models rejected below 80% reliability
 - **Prompt engineering** — structured system prompts with explicit examples, `CRITICAL` annotations, format enforcement, and edge-case instructions (UUID reproduction, date formats, parameter exclusion)
 - **Context window management** — conversation history trimmed to last 4 messages; system prompt regenerated per iteration to stay within token limits
 - **Streaming architecture** — tool execution events streamed discretely; atomic `generateText` used per iteration to avoid provider-level double-emit bugs
 
 ### Multi-Modal AI
+
 - **Receipt OCR** — Workers AI vision model processes uploaded receipt images to extract structured expense data
 - **Audio transcription** — Whisper binding converts voice input to text for the agent pipeline
 - **Handbook search** — LLM-based retrieval from unstructured markdown text (no vector database currently required)
 
 ### LLM Evaluation
+
 - **Golden query regression suite** — 10 queries with structured graders (`tools_required`, `tools_forbidden`, `response_contains_any`, `response_contains_none`)
 - **Real inference evaluation** — tests run against actual Workers AI, not mocked responses
 - **Safety boundaries tested** — cross-user data isolation verified programmatically
 
 ### Edge & Serverless AI Deployment
+
 - **Cloudflare Workers** — all compute runs at the edge; no centralized server
 - **Durable Objects** — stateful sessions with per-user isolation, WebSocket hibernation, and SQLite-backed conversation history
 - **Workers AI** — all LLM inference inside Cloudflare's network; no external API dependencies
 - **Zero-ops infrastructure** — no Docker, no VMs, no load balancers; `wrangler deploy` is the entire deployment pipeline
 
 ### Full-Stack AI Application Development
+
 - **React 19 + Vite 7** with real-time streaming chat UI
 - **TypeScript strict mode** end-to-end (frontend, backend, tool definitions, database types)
 - **Hono v4** router with middleware for session validation and header injection
 - **D1 relational database** with 8 normalized tables, sequential migrations, and transactional updates
 
 ### AI Safety & Guardrails
+
 - **Privilege escalation prevention** — `userId` always derived from server-side session, never from agent input
 - **Schema-level access control** — `employee_id` removed from all tool schemas; cross-user data access is structurally impossible regardless of LLM behavior
 - **Policy enforcement** — auto-approval limits, blackout periods, receipt thresholds, and non-reimbursable categories enforced programmatically before any submission
@@ -453,12 +468,14 @@ This project was built to demonstrate the skills most sought after in AI Enginee
 - **Output token cap** — `maxOutputTokens: 1024` prevents mid-sentence response cutoffs from hitting the model's default output limit
 
 ### Observability Engineering
+
 - **Workers OTel tracing** — zero-code automatic traces for every infrastructure call; configured via `wrangler.jsonc` only
 - **AI Gateway integration** — per-model token counts and latency surfaced in the Cloudflare dashboard without changes to inference code; response caching reduces repeated-query costs
 - **Agents SDK diagnostics override** — `observability.emit()` hook on the `Chat` class emits structured JSON for every agent lifecycle event
 - **Tail Worker** — production log forwarding architecture with separate deployment lifecycle (`wrangler.tail.jsonc`)
 
 ### Developer Tooling & Code Quality
+
 - **Biome 2** (Rust-based linter, replacing ESLint)
 - **Prettier 3** formatting enforced in CI
 - **GitHub Actions** CI with type checking, linting, and formatting checks
@@ -466,4 +483,4 @@ This project was built to demonstrate the skills most sought after in AI Enginee
 
 ---
 
-*Built with Cloudflare Workers, Workers AI, Durable Objects, D1, Hono, React 19, Vercel AI SDK, and the Cloudflare Agents SDK.*
+_Built with Cloudflare Workers, Workers AI, Durable Objects, D1, Hono, React 19, Vercel AI SDK, and the Cloudflare Agents SDK._

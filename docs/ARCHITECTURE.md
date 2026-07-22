@@ -1028,19 +1028,19 @@ docs/
 
 ### Key Files by Concern
 
-| Concern             | File(s)                                                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Entry Point         | [src/server.ts](../src/server.ts)                                                                                           |
-| Agent Logic         | [src/server.ts](../src/server.ts) (Chat class), [src/react-agent.ts](../src/react-agent.ts)                                 |
-| Tools               | [src/tools.ts](../src/tools.ts)                                                                                             |
-| System Prompt       | [src/prompts.ts](../src/prompts.ts)                                                                                         |
-| Frontend UI         | [src/app.tsx](../src/app.tsx), [src/client.tsx](../src/client.tsx)                                                          |
-| Auth                | [src/server.ts](../src/server.ts) (getUserFromSession), [src/providers/AuthProvider.tsx](../src/providers/AuthProvider.tsx) |
-| Database Schema     | [migrations/](../migrations/)                                                                                               |
-| Config              | [wrangler.jsonc](../wrangler.jsonc)                                                                                         |
-| AI Gateway Config   | [src/react-agent.ts](../src/react-agent.ts) (`gateway` option), [wrangler.jsonc](../wrangler.jsonc)                         |
-| Tail Worker         | [src/tail.ts](../src/tail.ts), [wrangler.tail.jsonc](../wrangler.tail.jsonc)                                                |
-| Eval Suite          | [docs/evals/golden_queries.json](../docs/evals/golden_queries.json), [tests/evals/golden_queries.test.ts](../tests/evals/golden_queries.test.ts), [vitest.evals.config.ts](../vitest.evals.config.ts) |
+| Concern           | File(s)                                                                                                                                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry Point       | [src/server.ts](../src/server.ts)                                                                                                                                                                     |
+| Agent Logic       | [src/server.ts](../src/server.ts) (Chat class), [src/react-agent.ts](../src/react-agent.ts)                                                                                                           |
+| Tools             | [src/tools.ts](../src/tools.ts)                                                                                                                                                                       |
+| System Prompt     | [src/prompts.ts](../src/prompts.ts)                                                                                                                                                                   |
+| Frontend UI       | [src/app.tsx](../src/app.tsx), [src/client.tsx](../src/client.tsx)                                                                                                                                    |
+| Auth              | [src/server.ts](../src/server.ts) (getUserFromSession), [src/providers/AuthProvider.tsx](../src/providers/AuthProvider.tsx)                                                                           |
+| Database Schema   | [migrations/](../migrations/)                                                                                                                                                                         |
+| Config            | [wrangler.jsonc](../wrangler.jsonc)                                                                                                                                                                   |
+| AI Gateway Config | [src/react-agent.ts](../src/react-agent.ts) (`gateway` option), [wrangler.jsonc](../wrangler.jsonc)                                                                                                   |
+| Tail Worker       | [src/tail.ts](../src/tail.ts), [wrangler.tail.jsonc](../wrangler.tail.jsonc)                                                                                                                          |
+| Eval Suite        | [docs/evals/golden_queries.json](../docs/evals/golden_queries.json), [tests/evals/golden_queries.test.ts](../tests/evals/golden_queries.test.ts), [vitest.evals.config.ts](../vitest.evals.config.ts) |
 
 ### Important Constants
 

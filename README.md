@@ -64,6 +64,7 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 2. **Try these prompts**:
 
    **PTO Requests**
+
    ```
    "I need PTO from December 23-27"
    "What's my PTO balance?"
@@ -71,10 +72,12 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
    ```
 
    **Expense Reimbursement**
+
    ```
    "I want to submit an expense"
    "I need to get reimbursed for a client dinner"
    ```
+
    Upload a receipt image — the AI extracts merchant, amount, date, and line items using computer vision, validates against company policies, and approves instantly or escalates.
 
 3. **Watch the AI work** — see real-time tool invocations as it checks balances, validates policies, processes receipt OCR, and makes approval decisions, all in seconds.
@@ -109,17 +112,17 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 
 **Core Stack**
 
-| Layer | Technology |
-|-------|-----------|
-| Agent Runtime | [`agents`](https://www.npmjs.com/package/agents) SDK v0.2.20 + Durable Objects |
+| Layer             | Technology                                                                        |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Agent Runtime     | [`agents`](https://www.npmjs.com/package/agents) SDK v0.2.20 + Durable Objects    |
 | LLM Orchestration | Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) via Vercel AI SDK |
-| Chat Model | Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) |
-| Vision / OCR | LLaVA 1.5 7B (`@cf/llava-hf/llava-1.5-7b-hf`) |
-| Handbook Search | Llama 3.1 8B (`@cf/meta/llama-3.1-8b-instruct`) |
-| State | Durable Object SQLite (chat history) + D1 (relational data) |
-| Frontend | React 19 + Vite with `useAgent` hook from `agents/react` |
-| Router | Hono v4 with session middleware |
-| Observability | Workers OTel tracing + AI Gateway + Agents SDK diagnostics + Tail Worker |
+| Chat Model        | Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)                        |
+| Vision / OCR      | LLaVA 1.5 7B (`@cf/llava-hf/llava-1.5-7b-hf`)                                     |
+| Handbook Search   | Llama 3.1 8B (`@cf/meta/llama-3.1-8b-instruct`)                                   |
+| State             | Durable Object SQLite (chat history) + D1 (relational data)                       |
+| Frontend          | React 19 + Vite with `useAgent` hook from `agents/react`                          |
+| Router            | Hono v4 with session middleware                                                   |
+| Observability     | Workers OTel tracing + AI Gateway + Agents SDK diagnostics + Tail Worker          |
 
 ### How the ReAct Agent Works
 
@@ -145,7 +148,10 @@ interface Tool {
   name: string;
   description: string;
   parameters: JSONSchema;
-  execute: (params: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+  execute: (
+    params: Record<string, unknown>,
+    context: ToolContext
+  ) => Promise<unknown>;
 }
 ```
 
@@ -156,6 +162,7 @@ interface Tool {
 3. Durable Object persists `userId` in storage → all tools use `context.userId`
 
 **PTO Tool Chain**
+
 ```
 get_current_user()
   → get_pto_balance()
@@ -165,6 +172,7 @@ get_current_user()
 ```
 
 **Expense Tool Chain**
+
 ```
 show_expense_dialog()
   → get_current_user()
@@ -177,14 +185,17 @@ show_expense_dialog()
 Three complementary layers run in production:
 
 **1. Workers Automatic Tracing** ([wrangler.jsonc](wrangler.jsonc))
+
 ```jsonc
 "observability": {
   "traces": { "enabled": true, "head_sampling_rate": 1 }
 }
 ```
+
 Zero-code OTel traces for every D1 query, Durable Object invocation, and Workers AI call. Export to Honeycomb, Grafana, or Axiom by adding a destination in the Workers dashboard.
 
 **2. Agents SDK Diagnostics** ([src/server.ts](src/server.ts))
+
 ```typescript
 override observability: Observability = {
   emit(event) {
@@ -194,15 +205,18 @@ override observability: Observability = {
   }
 };
 ```
+
 Structured JSON logs for every RPC call, state change, chat message, and WebSocket lifecycle event.
 
 **3. AI Gateway** ([src/react-agent.ts](src/react-agent.ts))
+
 ```typescript
 const workersai = createWorkersAI({
   binding: context.env.AI,
   gateway: { id: "approvalflow-ai", skipCache: false, cacheTtl: 3600 }
 });
 ```
+
 Per-request token counts, latency, and prompt/response logs for all LLM calls. Response caching reduces cost for repeated queries. View logs at `dash.cloudflare.com → AI → AI Gateway`.
 
 **4. Tail Worker** ([src/tail.ts](src/tail.ts))
@@ -214,7 +228,9 @@ The AI reads the employee handbook dynamically rather than hardcoding rules:
 
 ```typescript
 const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-  messages: [{ role: "user", content: getHandbookSearchPrompt(handbookContent, query) }]
+  messages: [
+    { role: "user", content: getHandbookSearchPrompt(handbookContent, query) }
+  ]
 });
 ```
 
@@ -241,6 +257,7 @@ npm test             # Run tests with Vitest
 ```
 
 **Environment Setup**
+
 - D1 database configured in `wrangler.jsonc`
 - Demo users seeded via `migrations/0001_create_auth_tables.sql` (password: `Password123!`)
 - No external API keys required — all inference runs on Workers AI
@@ -248,31 +265,31 @@ npm test             # Run tests with Vitest
 
 ### Code Navigation
 
-| File | Purpose |
-|------|---------|
-| [src/server.ts](src/server.ts) | `Chat` Durable Object — session handling, agents SDK observability override, Hono routes |
-| [src/react-agent.ts](src/react-agent.ts) | `runReActAgent()` — ReAct loop, tool parsing, AI Gateway config |
-| [src/prompts.ts](src/prompts.ts) | System prompt — tool descriptions, privacy rules, capability examples |
-| [src/tools.ts](src/tools.ts) | All 15 tools with privacy-enforced execute functions |
-| [src/tail.ts](src/tail.ts) | Tail Worker — production log forwarding (deploy separately) |
-| [src/app.tsx](src/app.tsx) | React chat UI with `useAgent` and `useAgentChat` hooks |
-| [migrations/](migrations/) | D1 migration files |
-| [docs/handbook/employee_handbook.md](docs/handbook/employee_handbook.md) | Company policies — edit to update rules without redeployment |
-| [wrangler.jsonc](wrangler.jsonc) | Workers config — AI binding, D1, Durable Objects, OTel tracing |
-| [wrangler.tail.jsonc](wrangler.tail.jsonc) | Tail Worker deployment config |
+| File                                                                     | Purpose                                                                                  |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [src/server.ts](src/server.ts)                                           | `Chat` Durable Object — session handling, agents SDK observability override, Hono routes |
+| [src/react-agent.ts](src/react-agent.ts)                                 | `runReActAgent()` — ReAct loop, tool parsing, AI Gateway config                          |
+| [src/prompts.ts](src/prompts.ts)                                         | System prompt — tool descriptions, privacy rules, capability examples                    |
+| [src/tools.ts](src/tools.ts)                                             | All 15 tools with privacy-enforced execute functions                                     |
+| [src/tail.ts](src/tail.ts)                                               | Tail Worker — production log forwarding (deploy separately)                              |
+| [src/app.tsx](src/app.tsx)                                               | React chat UI with `useAgent` and `useAgentChat` hooks                                   |
+| [migrations/](migrations/)                                               | D1 migration files                                                                       |
+| [docs/handbook/employee_handbook.md](docs/handbook/employee_handbook.md) | Company policies — edit to update rules without redeployment                             |
+| [wrangler.jsonc](wrangler.jsonc)                                         | Workers config — AI binding, D1, Durable Objects, OTel tracing                           |
+| [wrangler.tail.jsonc](wrangler.tail.jsonc)                               | Tail Worker deployment config                                                            |
 
 ### Database Schema
 
-| Table | Purpose |
-|-------|---------|
-| `users` | Employee profiles (level, manager, department) |
-| `sessions` | Auth sessions with expiry |
-| `pto_requests` | PTO request records with approval workflow |
-| `pto_balances` | Accrual and usage tracking |
-| `company_calendar` | Holidays and blackout periods |
-| `expense_requests` | Expense reimbursement workflow |
-| `receipt_uploads` | Base64 receipt images + OCR extracted data |
-| `audit_log` | Compliance event tracking |
+| Table              | Purpose                                        |
+| ------------------ | ---------------------------------------------- |
+| `users`            | Employee profiles (level, manager, department) |
+| `sessions`         | Auth sessions with expiry                      |
+| `pto_requests`     | PTO request records with approval workflow     |
+| `pto_balances`     | Accrual and usage tracking                     |
+| `company_calendar` | Holidays and blackout periods                  |
+| `expense_requests` | Expense reimbursement workflow                 |
+| `receipt_uploads`  | Base64 receipt images + OCR extracted data     |
+| `audit_log`        | Compliance event tracking                      |
 
 ### Why This Architecture?
 
@@ -287,14 +304,17 @@ npm test             # Run tests with Vitest
 ### Contributing & Extending
 
 **Adding a New Tool**
+
 1. Define in `src/tools.ts` with `name`, `description`, `parameters`, `execute`
 2. Never accept `employee_id` as a parameter — always use `context.userId`
 3. Add to the `tools` export object
 4. Update `src/prompts.ts` to describe when to use the tool
 
 **Modifying Policies**
+
 - Edit `docs/handbook/employee_handbook.md`
 - The agent queries updated policies automatically via `search_employee_handbook`
 
 **Changing Models**
+
 - ⚠️ Do not change `@cf/meta/llama-3.3-70b-instruct-fp8-fast` without comprehensive testing — other models have different function-calling behavior with the custom ReAct parser

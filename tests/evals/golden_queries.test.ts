@@ -338,8 +338,18 @@ interface Graders {
 
 interface AgentResult {
   response: string;
-  toolCalls: Array<{ toolName: string; toolCallId: string; args: unknown; result: unknown }>;
-  steps: Array<{ iteration: number; thought: string; action: string; observation: unknown }>;
+  toolCalls: Array<{
+    toolName: string;
+    toolCallId: string;
+    args: unknown;
+    result: unknown;
+  }>;
+  steps: Array<{
+    iteration: number;
+    thought: string;
+    action: string;
+    observation: unknown;
+  }>;
 }
 
 function gradeResult(
@@ -357,7 +367,9 @@ function gradeResult(
   if (graders.tools_required) {
     for (const toolName of graders.tools_required) {
       if (!toolNames.includes(toolName)) {
-        failures.push(`Expected tool '${toolName}' to be called (called: ${toolNames.join(", ") || "none"})`);
+        failures.push(
+          `Expected tool '${toolName}' to be called (called: ${toolNames.join(", ") || "none"})`
+        );
       }
     }
   }
@@ -413,7 +425,8 @@ function logTranscript(
   result: AgentResult,
   gradeOutcome: { passed: boolean; failures: string[] }
 ) {
-  const toolSummary = result.toolCalls.map((t) => t.toolName).join(" → ") || "none";
+  const toolSummary =
+    result.toolCalls.map((t) => t.toolName).join(" → ") || "none";
   console.log(
     `\n[EVAL] ${queryId} | tools: ${toolSummary} | passed: ${gradeOutcome.passed}`
   );
@@ -466,7 +479,14 @@ describe("Golden Query Regression Suite", () => {
     const gradeOutcome = gradeResult(result, {
       no_tools_called: true,
       response_not_empty: true,
-      response_contains_any: ["date", "dates", "when", "specific", "start", "end"]
+      response_contains_any: [
+        "date",
+        "dates",
+        "when",
+        "specific",
+        "start",
+        "end"
+      ]
     });
     logTranscript("q02_vague_pto", input, result, gradeOutcome);
     expect(gradeOutcome.passed, gradeOutcome.failures.join("; ")).toBe(true);
@@ -475,8 +495,7 @@ describe("Golden Query Regression Suite", () => {
   // ── Q03: PTO Policy Question ──────────────────────────────────────────────────
 
   it("Q03 - PTO policy question: uses handbook, does not submit", async () => {
-    const input =
-      "What's the maximum PTO I can take without manager approval?";
+    const input = "What's the maximum PTO I can take without manager approval?";
     const result = await runReActAgent(input, [], {
       env,
       userId: USER_IDS.junior
