@@ -44,8 +44,8 @@
   },
   // Uncomment after deploying the tail worker (cd src && wrangler deploy --config wrangler.tail.jsonc):
   "tail_consumers": [
-    { 
-      "service": "approvalflow-ai-tail" 
+    {
+      "service": "approvalflow-ai-tail"
     }
   ],
   // Example env vars can be defined here. Use Wrangler secrets in production.
