@@ -27,6 +27,8 @@ Behind the scenes it orchestrates 15 specialized tools, processes receipts with 
 - 💬 **Conversational AI** — natural language interface with real-time streaming responses via WebSocket
 - 🌴 **PTO Workflow** — auto-approve, deny, or escalate requests based on company policies and employee level
 - 🧾 **Expense Reimbursement** — receipt OCR processing with Workers AI Vision, policy validation, and instant approval
+- 🎤 **Voice Input** — speak your request; audio is transcribed with Whisper on Workers AI
+- 📚 **Handbook RAG** — company policies are chunked, embedded, and retrieved from a Vectorize index for grounded answers
 - 🛠️ **15 Specialized Tools** — automatic context injection, privacy-enforced data access, and human-in-the-loop confirmations
 - 🔒 **Privacy Enforcement** — tool-level guards ensure users can only access their own data; `employee_id` overrides are rejected server-side regardless of what the LLM passes
 - 📊 **Observability** — Workers automatic tracing (OTel), agents SDK diagnostics, and AI Gateway logging for every model call
@@ -89,8 +91,10 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 - ✅ **Llama 3.3 70B on Workers AI** — main chat model (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)
 - ✅ **Durable Objects** — stateful chat sessions with SQLite persistence via Agents SDK
 - ✅ **Workers AI Vision** — OCR receipt processing with `@cf/llava-hf/llava-1.5-7b-hf`
+- ✅ **Vectorize RAG** — the employee handbook is chunked, embedded, and stored in a `handbook_vectors` Vectorize index for semantic policy retrieval
+- ✅ **Voice Input** — speech-to-text via Whisper (`@cf/openai/whisper-large-v3-turbo`) so users can speak their requests
 - ✅ **D1 Database** — relational data for users, PTO balances, expenses, audit logs
-- ✅ **AI Gateway** — per-request LLM observability: token counts, latency, prompt/response logs, and response caching across all three models
+- ✅ **AI Gateway** — per-request LLM observability: token counts, latency, prompt/response logs, and response caching across every model call
 - ✅ **Workers OTel Tracing** — automatic end-to-end traces for every D1 query, Durable Object call, and Workers AI invocation
 - ✅ **Real-time Streaming** — tool invocations stream to the UI as they execute
 - ✅ **Production-ready Auth** — PBKDF2 password hashing, HTTP-only session cookies
@@ -99,7 +103,7 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 
 - **ReAct Agent Framework** — custom iterative tool-calling loop ([src/react-agent.ts](src/react-agent.ts))
 - **Privacy-enforced Tools** — `employee_id` is stripped from all tool schemas; every tool resolves identity from the authenticated session only, making it impossible for the LLM to access another user's data
-- **Policy Enforcement** — AI reads the employee handbook dynamically; updating policies requires only editing a markdown file, no retraining
+- **Policy Enforcement** — the employee handbook is embedded into a Vectorize index and retrieved semantically at query time; updating policies means editing the handbook and re-ingesting, no model retraining
 - **Computer Vision** — extracts merchant, amount, date, and line items from receipt images using Workers AI Vision
 - **Human-in-the-Loop** — manager escalation for requests exceeding auto-approval thresholds
 - **Agents SDK Observability** — structured diagnostics for every RPC call, state change, and message lifecycle event
@@ -118,7 +122,8 @@ https://github.com/user-attachments/assets/567b9d7c-169e-4614-bedc-31b9b03c6c42
 | LLM Orchestration | Custom ReAct loop in [`src/react-agent.ts`](src/react-agent.ts) via Vercel AI SDK |
 | Chat Model        | Llama 3.3 70B (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`)                        |
 | Vision / OCR      | LLaVA 1.5 7B (`@cf/llava-hf/llava-1.5-7b-hf`)                                     |
-| Handbook Search   | Llama 3.1 8B (`@cf/meta/llama-3.1-8b-instruct`)                                   |
+| Handbook Search   | Vectorize RAG — `handbook_vectors` index (chunk → embed → semantic retrieval)     |
+| Voice Input       | Whisper (`@cf/openai/whisper-large-v3-turbo`) speech-to-text                      |
 | State             | Durable Object SQLite (chat history) + D1 (relational data)                       |
 | Frontend          | React 19 + Vite with `useAgent` hook from `agents/react`                          |
 | Router            | Hono v4 with session middleware                                                   |
@@ -224,12 +229,17 @@ Captures all diagnostics channel events, worker logs, and unhandled exceptions i
 
 ### Policy Enforcement
 
-The AI reads the employee handbook dynamically rather than hardcoding rules:
+The AI reads the employee handbook dynamically via semantic retrieval rather than hardcoding rules. The handbook is chunked and embedded into the `handbook_vectors` Vectorize index ([src/ingest_handbook.ts](src/ingest_handbook.ts)); at query time the most relevant chunks are retrieved and passed to the model:
 
 ```typescript
-const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+// Embed the query and retrieve the most relevant handbook chunks
+const { data } = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: query });
+const matches = await env.VECTORIZE.query(data[0], { topK: 5, returnMetadata: true });
+
+const context = matches.matches.map((m) => m.metadata.content).join("\n\n");
+const response = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
   messages: [
-    { role: "user", content: getHandbookSearchPrompt(handbookContent, query) }
+    { role: "user", content: getHandbookSearchPrompt(context, query) }
   ]
 });
 ```
@@ -299,7 +309,7 @@ npm test             # Run tests with Vitest
 
 **Workers AI for Inference** — all models run on Cloudflare's edge network. Zero external API dependencies, sub-second latency for tool-calling loops.
 
-**AI Gateway as LLM Control Plane** — unified observability across all three models (Llama 3.3 70B, LLaVA, Whisper) through a single binding config change. Adds caching, rate limiting, and per-request logging with no code changes.
+**AI Gateway as LLM Control Plane** — unified observability across every model call (Llama 3.3 70B chat, LLaVA vision, Whisper speech-to-text, and handbook embeddings) through a single binding config change. Adds caching, rate limiting, and per-request logging with no code changes.
 
 ### Contributing & Extending
 
