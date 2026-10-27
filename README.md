@@ -234,13 +234,14 @@ The AI reads the employee handbook dynamically via semantic retrieval rather tha
 ```typescript
 // Embed the query and retrieve the most relevant handbook chunks
 const { data } = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: query });
-const matches = await env.VECTORIZE.query(data[0], { topK: 5, returnMetadata: true });
+const matches = await env.VECTORIZE.query(data[0], {
+  topK: 5,
+  returnMetadata: true
+});
 
 const context = matches.matches.map((m) => m.metadata.content).join("\n\n");
 const response = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
-  messages: [
-    { role: "user", content: getHandbookSearchPrompt(context, query) }
-  ]
+  messages: [{ role: "user", content: getHandbookSearchPrompt(context, query) }]
 });
 ```
 
