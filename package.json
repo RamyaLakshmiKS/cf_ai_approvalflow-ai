@@ -1,7 +1,7 @@
 {
-	"name": "cloudflare-agent-starter",
+	"name": "approvalflow-ai",
 	"version": "1.0.0",
-	"description": "",
+	"description": "ApprovalFlow AI — conversational HR assistant for PTO requests and expense reimbursements, built on Cloudflare Workers AI, Durable Objects, and the agents SDK.",
 	"type": "module",
 	"private": true,
 	"scripts": {
